@@ -7,13 +7,14 @@ export default function KategoriPage() {
             title="Kategori"
             icon="🏷️"
             columns={[
-                { key: 'name', label: 'Nama Kategori' },
-                { key: 'description', label: 'Deskripsi' },
-                { key: 'created_at', label: 'Dibuat', format: 'date' }
+                { key: 'id', label: 'ID', format: 'shortId' },
+                { key: 'name', label: 'Name' },
+                { key: 'description', label: 'Description' },
+                { key: 'created_at', label: 'Created At', format: 'date' }
             ]}
             formFields={[
-                { name: 'name', label: 'Nama Kategori', placeholder: 'Masukkan nama kategori' },
-                { name: 'description', label: 'Deskripsi', type: 'textarea', placeholder: 'Deskripsi kategori', required: false }
+                { name: 'name', label: 'Name', placeholder: 'Masukkan nama kategori' },
+                { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Deskripsi kategori', required: false }
             ]}
         />
     )

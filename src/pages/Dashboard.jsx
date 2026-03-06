@@ -21,12 +21,12 @@ export default function Dashboard() {
                 supabase.from('products').select('id', { count: 'exact', head: true }),
                 supabase.from('categories').select('id', { count: 'exact', head: true }),
                 supabase.from('suppliers').select('id', { count: 'exact', head: true }),
-                supabase.from('tiktok_sales').select('total'),
+                supabase.from('tiktok_sales').select('order_amount'),
                 supabase.from('incomes').select('amount'),
                 supabase.from('expenses').select('amount')
             ])
 
-            const totalSales = sales.data?.reduce((sum, s) => sum + (s.total || 0), 0) || 0
+            const totalSales = sales.data?.reduce((sum, s) => sum + (s.order_amount || 0), 0) || 0
             const totalIncome = incomes.data?.reduce((sum, i) => sum + (i.amount || 0), 0) || 0
             const totalExpense = expenses.data?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0
 

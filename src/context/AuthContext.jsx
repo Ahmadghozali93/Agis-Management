@@ -78,16 +78,7 @@ export function AuthProvider({ children }) {
             options: { data: { full_name: fullName, role, status: 'pending' } }
         })
         if (error) throw error
-        if (data.user) {
-            const { error: profileError } = await supabase.from('profiles').upsert({
-                id: data.user.id,
-                email,
-                full_name: fullName,
-                role,
-                status: 'pending'
-            })
-            if (profileError) throw profileError
-        }
+        // Profile is automatically created by database trigger (handle_new_user)
         return data
     }
 

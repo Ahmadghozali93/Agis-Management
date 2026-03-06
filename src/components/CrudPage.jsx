@@ -8,7 +8,8 @@ export default function CrudPage({
     columns = [],
     formFields = [],
     defaultSort = 'created_at',
-    extraFilters = null
+    extraFilters = null,
+    onValidate = null
 }) {
     const [data, setData] = useState([])
     const [loading, setLoading] = useState(true)
@@ -64,6 +65,13 @@ export default function CrudPage({
                 saveData[f.name] = formData[f.name] ?? ''
             })
 
+            if (onValidate) {
+                const validationError = await onValidate(saveData, editItem)
+                if (validationError) {
+                    throw new Error(validationError)
+                }
+            }
+
             if (editItem) {
                 const { error } = await supabase
                     .from(tableName)
@@ -108,13 +116,14 @@ export default function CrudPage({
 
     function formatCell(item, col) {
         const val = item[col.key]
-        if (col.format === 'currency') return 'Rp ' + (val || 0).toLocaleString('id-ID')
-        if (col.format === 'date') return val ? new Date(val).toLocaleDateString('id-ID') : '-'
+        if (col.format === 'shortId') return <span className="cell-id">{val ? val.substring(0, 8).toUpperCase() : '-'}</span>
+        if (col.format === 'currency') return <span className="cell-currency">Rp {(val || 0).toLocaleString('id-ID')}</span>
+        if (col.format === 'date') return <span className="cell-date">{val ? new Date(val).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</span>
         if (col.format === 'badge') {
             const cls = col.badgeMap?.[val] || 'badge-info'
             return <span className={`badge ${cls}`}>{val || '-'}</span>
         }
-        if (col.format === 'number') return (val || 0).toLocaleString('id-ID')
+        if (col.format === 'number') return <span className="cell-number">{(val || 0).toLocaleString('id-ID')}</span>
         return val || '-'
     }
 
@@ -127,7 +136,8 @@ export default function CrudPage({
                 </div>
             </div>
 
-            <div className="table-container">
+            {/* Desktop Table */}
+            <div className="table-container desktop-table">
                 <div className="table-toolbar">
                     <div className="table-search">
                         🔍
@@ -180,6 +190,58 @@ export default function CrudPage({
                         </table>
                     )}
                 </div>
+            </div>
+
+            {/* Mobile Cards */}
+            <div className="mobile-cards">
+                <div className="table-toolbar" style={{ borderRadius: 'var(--radius-lg)', marginBottom: '12px', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+                    <div className="table-search">
+                        🔍
+                        <input
+                            type="text"
+                            placeholder="Cari data..."
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                        />
+                    </div>
+                    <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                        {filteredData.length} data
+                    </span>
+                </div>
+
+                {loading ? (
+                    <div className="empty-state">
+                        <div className="spinner"></div>
+                        <p>Memuat data...</p>
+                    </div>
+                ) : filteredData.length === 0 ? (
+                    <div className="empty-state">
+                        <div className="empty-state-icon">📭</div>
+                        <p>Belum ada data</p>
+                    </div>
+                ) : (
+                    <div className="cards-list">
+                        {filteredData.map((item, idx) => (
+                            <div key={item.id} className="data-card">
+                                <div className="data-card-header">
+                                    <span className="data-card-number">#{idx + 1}</span>
+                                    <div className="data-card-actions">
+                                        <button className="btn btn-sm btn-secondary" onClick={() => openEdit(item)}>✏️</button>
+                                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item.id)}>🗑️</button>
+                                    </div>
+                                </div>
+                                <div className="data-card-body">
+                                    {columns.map(col => (
+                                        <div key={col.key} className="data-card-row">
+                                            <span className="data-card-label">{col.label}</span>
+                                            <span className="data-card-value">{formatCell(item, col)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {showModal && (

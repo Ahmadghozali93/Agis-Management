@@ -7,15 +7,26 @@ export default function SupplierPage() {
             title="Supplier"
             icon="🚚"
             columns={[
-                { key: 'name', label: 'Nama Supplier' },
-                { key: 'phone', label: 'Telepon' },
-                { key: 'address', label: 'Alamat' },
-                { key: 'created_at', label: 'Dibuat', format: 'date' }
+                { key: 'id', label: 'ID', format: 'shortId' },
+                { key: 'name', label: 'Name' },
+                { key: 'description', label: 'Description' },
+                {
+                    key: 'status', label: 'Status', format: 'badge', badgeMap: {
+                        'active': 'badge-success',
+                        'inactive': 'badge-danger'
+                    }
+                },
+                { key: 'created_at', label: 'Created At', format: 'date' }
             ]}
             formFields={[
-                { name: 'name', label: 'Nama Supplier', placeholder: 'Masukkan nama supplier' },
-                { name: 'phone', label: 'Telepon', placeholder: '08xxxxxxxxxx' },
-                { name: 'address', label: 'Alamat', type: 'textarea', placeholder: 'Alamat supplier', required: false }
+                { name: 'name', label: 'Name', placeholder: 'Masukkan nama supplier' },
+                { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Deskripsi supplier', required: false },
+                {
+                    name: 'status', label: 'Status', type: 'select', defaultValue: 'active', options: [
+                        { value: 'active', label: 'Active' },
+                        { value: 'inactive', label: 'Inactive' }
+                    ]
+                }
             ]}
         />
     )
