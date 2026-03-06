@@ -887,13 +887,13 @@ body {
 }
 
 .stat-card-icon {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .stat-card-icon.purple {
@@ -933,13 +933,13 @@ body {
 }
 
 .stat-card-value {
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 800;
   color: var(--text-primary);
 }
 
 .stat-card-change {
-  font-size: 12px;
+  font-size: 11px;
   margin-top: 4px;
   font-weight: 600;
 }

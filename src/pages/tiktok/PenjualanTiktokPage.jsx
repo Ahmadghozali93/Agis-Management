@@ -389,40 +389,40 @@ export default function PenjualanTiktokPage() {
             <div className="stats-grid" style={{ marginBottom: '16px' }}>
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>🛒</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6' }}>🛒</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>GMV TiktokShop</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{fmt(gmvTiktok)}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>GMV TiktokShop</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{fmt(gmvTiktok)}</h3>
                         </div>
                     </div>
                 </div>
 
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(168, 85, 247, 0.1)', color: '#a855f7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>💰</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(168, 85, 247, 0.1)', color: '#a855f7' }}>💰</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '13px', whiteSpace: 'nowrap' }}>Omset Kotor (Total HJ)</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{fmt(omsetKotor)}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0', whiteSpace: 'nowrap' }}>Omset Kotor (Total HJ)</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{fmt(omsetKotor)}</h3>
                         </div>
                     </div>
                 </div>
 
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>💸</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b' }}>💸</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>Estimasi Pencairan</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{fmt(estimasiPencairan)}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Estimasi Pencairan</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{fmt(estimasiPencairan)}</h3>
                         </div>
                     </div>
                 </div>
 
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>📈</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981' }}>📈</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>AOV</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{fmt(aov)}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>AOV</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{fmt(aov)}</h3>
                         </div>
                     </div>
                 </div>
@@ -432,40 +432,40 @@ export default function PenjualanTiktokPage() {
             <div className="stats-grid" style={{ marginBottom: '24px' }}>
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>⏳</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8' }}>⏳</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '13px', whiteSpace: 'nowrap' }}>Pendapatan Dalam Proses</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{fmt(pendapatanProses)}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0', whiteSpace: 'nowrap' }}>Pendapatan Dalam Proses</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{fmt(pendapatanProses)}</h3>
                         </div>
                     </div>
                 </div>
 
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>❌</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}>❌</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>Nominal RTS</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{fmt(nominalFailedCod)}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Nominal RTS</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{fmt(nominalFailedCod)}</h3>
                         </div>
                     </div>
                 </div>
 
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(249, 115, 22, 0.1)', color: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>🔄</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(249, 115, 22, 0.1)', color: '#f97316' }}>🔄</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>Nominal Return</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{fmt(nominalReturn)}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Nominal Return</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{fmt(nominalReturn)}</h3>
                         </div>
                     </div>
                 </div>
 
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>✅</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e' }}>✅</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>Pendapatan Selesai</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{fmt(pendapatanSelesai)}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Pendapatan Selesai</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{fmt(pendapatanSelesai)}</h3>
                         </div>
                     </div>
                 </div>
@@ -475,28 +475,20 @@ export default function PenjualanTiktokPage() {
             <div className="stats-grid" style={{ marginBottom: '24px' }}>
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                            width: '48px', height: '48px', borderRadius: '12px',
-                            background: 'rgba(249, 115, 22, 0.1)', color: '#f97316',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
-                        }}>📋</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(249, 115, 22, 0.1)', color: '#f97316' }}>📋</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>Total Pesanan</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{totalOrders.toLocaleString('id-ID')}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Total Pesanan</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{totalOrders.toLocaleString('id-ID')}</h3>
                         </div>
                     </div>
                 </div>
 
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                            width: '48px', height: '48px', borderRadius: '12px',
-                            background: 'rgba(168, 85, 247, 0.1)', color: '#a855f7',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
-                        }}>📦</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(168, 85, 247, 0.1)', color: '#a855f7' }}>📦</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>Total Produk Terjual</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{totalQty.toLocaleString('id-ID')}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Total Produk Terjual</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{totalQty.toLocaleString('id-ID')}</h3>
                         </div>
                     </div>
                 </div>
@@ -513,16 +505,12 @@ export default function PenjualanTiktokPage() {
                     }
 
                     return (
-                        <div key={status} className="stat-card" style={{ padding: '16px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div style={{
-                                    width: '40px', height: '40px', borderRadius: '10px',
-                                    background: mapped.bg, color: mapped.color,
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px'
-                                }}>{mapped.icon}</div>
+                        <div key={status} className="stat-card" style={{ padding: '12px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div className="stat-card-icon" style={{ background: mapped.bg, color: mapped.color }}>{mapped.icon}</div>
                                 <div>
-                                    <p style={{ margin: '0 0 2px 0', color: 'var(--text-secondary)', fontSize: '12px' }}>Status: {mapped.label}</p>
-                                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold' }}>{statusCounts[status].toLocaleString('id-ID')}</h3>
+                                    <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Status: {mapped.label}</p>
+                                    <h3 className="stat-card-value" style={{ margin: 0 }}>{statusCounts[status].toLocaleString('id-ID')}</h3>
                                 </div>
                             </div>
                         </div>
