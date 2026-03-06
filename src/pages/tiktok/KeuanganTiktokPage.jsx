@@ -13,6 +13,8 @@ export default function KeuanganTiktokPage() {
     const [dateFilter, setDateFilter] = useState('all') // 7days, 30days, month, year, custom, all
     const [customRange, setCustomRange] = useState({ start: '', end: '' })
     const [selectedMonth, setSelectedMonth] = useState('')
+    const [statusFilter, setStatusFilter] = useState('all')
+    const [tokoFilter, setTokoFilter] = useState('all')
 
     // Store Selection Modal State
     const [storeOptions, setStoreOptions] = useState([])
@@ -36,7 +38,7 @@ export default function KeuanganTiktokPage() {
     useEffect(() => {
         applyFilters()
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [data, searchTerm, dateFilter, customRange, matchedOrders, statusFilter, tokoFilter, selectedMonth])
+    }, [data, searchTerm, dateFilter, customRange, matchedOrders, tokoFilter, selectedMonth])
 
     const fetchData = async () => {
         setLoading(true)
@@ -276,9 +278,6 @@ export default function KeuanganTiktokPage() {
         }
     }
 
-    const [statusFilter, setStatusFilter] = useState('all')
-    const [tokoFilter, setTokoFilter] = useState('all')
-
     const applyFilters = () => {
         let result = [...data]
 
@@ -303,6 +302,11 @@ export default function KeuanganTiktokPage() {
                 item.order_id?.toLowerCase().includes(lowerTerm) ||
                 item.store?.toLowerCase().includes(lowerTerm)
             )
+        }
+
+        // Toko Filter
+        if (tokoFilter !== 'all') {
+            result = result.filter(item => (item.store || '') === tokoFilter)
         }
 
         // 2. Date filter
@@ -566,6 +570,16 @@ export default function KeuanganTiktokPage() {
                                 <input type="date" className="form-input" value={customRange.end} onChange={e => setCustomRange({ ...customRange, end: e.target.value })} />
                             </div>
                         )}
+                        <select
+                            className="filter-select"
+                            value={tokoFilter}
+                            onChange={e => setTokoFilter(e.target.value)}
+                        >
+                            <option value="all">Semua Toko</option>
+                            {storeOptions.map(toko => (
+                                <option key={toko} value={toko}>{toko}</option>
+                            ))}
+                        </select>
                     </div>
                 </div>
 
