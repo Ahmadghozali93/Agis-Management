@@ -46,6 +46,7 @@ const menuItems = [
         icon: '🎬',
         roles: ['admin', 'owner', 'spv', 'host', 'creator'],
         children: [
+            { key: 'dashboard-konten', label: 'Dashboard', path: '/konten/dashboard' },
             { key: 'data-akun', label: 'Data Akun', path: '/konten/data-akun' },
             { key: 'laporan-konten', label: 'Laporan Konten', path: '/konten/laporan-konten' },
             { key: 'laporan-live', label: 'Laporan Live', path: '/konten/laporan-live' }
@@ -89,7 +90,7 @@ const menuItems = [
         roles: ['admin', 'owner'],
         children: [
             { key: 'general', label: 'General', path: '/pengaturan/general' },
-            { key: 'akun-bank', label: 'Akun Bank', path: '/pengaturan/akun-bank' }
+            { key: 'coa', label: 'Chart of Accounts', path: '/pengaturan/coa' }
         ]
     }
 ]

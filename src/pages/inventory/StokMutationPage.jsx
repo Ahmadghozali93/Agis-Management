@@ -5,6 +5,9 @@ function fmtDate(d) {
     if (!d) return '-'
     return new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
 }
+function fmtCurrency(num) {
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num || 0)
+}
 
 export default function StokMutationPage() {
     const [mutations, setMutations] = useState([])
@@ -19,6 +22,7 @@ export default function StokMutationPage() {
     const [productSku, setProductSku] = useState('')
     const [type, setType] = useState('in')
     const [qty, setQty] = useState('')
+    const [hpp, setHpp] = useState('')
     const [note, setNote] = useState('')
     const [date, setDate] = useState(new Date().toISOString().substring(0, 10))
 
@@ -30,7 +34,7 @@ export default function StokMutationPage() {
         setLoading(true)
         const [mutRes, prodRes] = await Promise.all([
             supabase.from('stock_mutations').select('*').order('created_at', { ascending: false }),
-            supabase.from('products').select('name, sku').order('name')
+            supabase.from('products').select('name, sku, hpp').order('name')
         ])
         if (mutRes.data) setMutations(mutRes.data)
         if (prodRes.data) setProducts(prodRes.data)
@@ -60,6 +64,7 @@ export default function StokMutationPage() {
         setProductSku('')
         setType('in')
         setQty('')
+        setHpp('')
         setNote('')
         setDate(new Date().toISOString().substring(0, 10))
         setShowForm(true)
@@ -74,6 +79,7 @@ export default function StokMutationPage() {
                 sku: productSku,
                 type,
                 qty: Number(qty),
+                hpp: type === 'in' ? (Number(hpp) || 0) : null,
                 note,
                 date
             }
@@ -134,7 +140,7 @@ export default function StokMutationPage() {
                             </select>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: type === 'in' ? '1fr 1fr 1fr' : '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                             <div className="form-group">
                                 <label>Tipe Mutasi</label>
                                 <select className="form-input" value={type} onChange={e => setType(e.target.value)}>
@@ -146,6 +152,12 @@ export default function StokMutationPage() {
                                 <label>Jumlah</label>
                                 <input type="number" className="form-input" value={qty} onChange={e => setQty(e.target.value)} required min="1" />
                             </div>
+                            {type === 'in' && (
+                                <div className="form-group">
+                                    <label>HPP / Unit</label>
+                                    <input type="number" className="form-input" value={hpp} onChange={e => setHpp(e.target.value)} placeholder="Harga pokok per unit" min="0" />
+                                </div>
+                            )}
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
@@ -175,14 +187,15 @@ export default function StokMutationPage() {
                                     <th style={{ padding: '16px', textAlign: 'left' }}>Produk</th>
                                     <th style={{ padding: '16px', textAlign: 'center' }}>Tipe</th>
                                     <th style={{ padding: '16px', textAlign: 'center' }}>Jumlah</th>
+                                    <th style={{ padding: '16px', textAlign: 'right' }}>HPP/Unit</th>
                                     <th style={{ padding: '16px', textAlign: 'left' }}>Catatan</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {loading ? (
-                                    <tr><td colSpan="5" style={{ padding: '20px', textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }}></div></td></tr>
+                                    <tr><td colSpan="6" style={{ padding: '20px', textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }}></div></td></tr>
                                 ) : mutations.length === 0 ? (
-                                    <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Belum ada data mutasi stok</td></tr>
+                                    <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Belum ada data mutasi stok</td></tr>
                                 ) : (
                                     mutations.map(m => (
                                         <tr key={m.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
@@ -197,6 +210,9 @@ export default function StokMutationPage() {
                                                 </span>
                                             </td>
                                             <td style={{ padding: '16px', textAlign: 'center', fontWeight: 'bold' }}>{m.qty}</td>
+                                            <td style={{ padding: '16px', textAlign: 'right', color: m.type === 'in' ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                                                {m.type === 'in' && m.hpp ? fmtCurrency(m.hpp) : '-'}
+                                            </td>
                                             <td style={{ padding: '16px' }}>{m.note || '-'}</td>
                                         </tr>
                                     ))

@@ -14,6 +14,7 @@ import ReturnPage from './pages/tiktok/ReturnPage'
 import FailedCodPage from './pages/tiktok/FailedCodPage'
 import AgregatorPage from './pages/AgregatorPage'
 import DataAkunPage from './pages/konten/DataAkunPage'
+import DashboardKontenPage from './pages/konten/DashboardKontenPage'
 import LaporanKontenPage from './pages/konten/LaporanKontenPage'
 import LaporanLivePage from './pages/konten/LaporanLivePage'
 import StokOverviewPage from './pages/inventory/StokOverviewPage'
@@ -26,7 +27,7 @@ import LabaRugiPage from './pages/keuangan/LabaRugiPage'
 import NeracaPage from './pages/keuangan/NeracaPage'
 import ManagementUserPage from './pages/users/ManagementUserPage'
 import GeneralPage from './pages/pengaturan/GeneralPage'
-import AkunBankPage from './pages/pengaturan/AkunBankPage'
+import CoaPage from './pages/pengaturan/CoaPage'
 
 function ProtectedRoute({ children, allowedRoles }) {
     const { profile, loading } = useAuth()
@@ -120,6 +121,7 @@ function AppRoutes() {
                 <Route path="agregator" element={<ProtectedRoute allowedRoles={MANAGEMENT}><AgregatorPage /></ProtectedRoute>} />
 
                 {/* Konten */}
+                <Route path="konten/dashboard" element={<ProtectedRoute allowedRoles={ALL}><DashboardKontenPage /></ProtectedRoute>} />
                 <Route path="konten/data-akun" element={<ProtectedRoute allowedRoles={ALL}><DataAkunPage /></ProtectedRoute>} />
                 <Route path="konten/laporan-konten" element={<ProtectedRoute allowedRoles={ALL}><LaporanKontenPage /></ProtectedRoute>} />
                 <Route path="konten/laporan-live" element={<ProtectedRoute allowedRoles={ALL}><LaporanLivePage /></ProtectedRoute>} />
@@ -141,7 +143,7 @@ function AppRoutes() {
 
                 {/* Pengaturan */}
                 <Route path="pengaturan/general" element={<ProtectedRoute allowedRoles={ADMIN_OWNER}><GeneralPage /></ProtectedRoute>} />
-                <Route path="pengaturan/akun-bank" element={<ProtectedRoute allowedRoles={ADMIN_OWNER}><AkunBankPage /></ProtectedRoute>} />
+                <Route path="pengaturan/coa" element={<ProtectedRoute allowedRoles={ADMIN_OWNER}><CoaPage /></ProtectedRoute>} />
             </Route>
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

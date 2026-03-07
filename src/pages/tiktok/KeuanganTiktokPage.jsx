@@ -115,13 +115,23 @@ export default function KeuanganTiktokPage() {
                 if (uniqueStores.length > 0) setSelectedStore(uniqueStores[0])
             }
 
-            // 4. Fetch Bank Accounts for Withdraw
+            // 4. Fetch Akun Kas/Bank from COA for Withdraw
             const { data: banksData } = await supabase
-                .from('bank_accounts')
-                .select('*')
-                .order('created_at', { ascending: true })
+                .from('coa')
+                .select('id, code, name, description')
+                .eq('account_group', 'Kas/Bank')
+                .order('code', { ascending: true })
             if (banksData) {
-                setBankAccounts(banksData)
+                setBankAccounts(banksData.map(a => {
+                    let label = a.code ? `[${a.code}] ${a.name}` : a.name
+                    if (a.description) label += ` - ${a.description}`
+                    return {
+                        id: a.id,
+                        bank_name: label,
+                        account_number: '',
+                        account_name: ''
+                    }
+                }))
             }
         } catch (error) {
             console.error('Error fetching data:', error)
@@ -368,9 +378,11 @@ export default function KeuanganTiktokPage() {
 
             // 2. Insert into incomes
             const { error: incomeErr } = await supabase.from('incomes').insert([{
-                source: `Pencairan TikTok - ${withdrawStore}`,
+                category: `Pencairan TikTok`,
+                sub_category: withdrawStore,
                 amount: amountNum,
-                note: `Masuk ke ${withdrawTargetBank || 'Bank'}`,
+                payment_method: withdrawTargetBank || '',
+                note: `Pencairan TikTok - ${withdrawStore} ke ${withdrawTargetBank || 'Bank'}`,
                 date: new Date(withdrawDate).toISOString().substring(0, 10)
             }])
             if (incomeErr) throw incomeErr
@@ -692,9 +704,8 @@ export default function KeuanganTiktokPage() {
                             <thead>
                                 <tr>
                                     <th>No</th>
-                                    <th>Order ID</th>
+                                    <th>Order Info</th>
                                     <th>Store</th>
-                                    <th>Settlement Date</th>
                                     <th style={{ textAlign: 'right' }}>Harga Jual</th>
                                     <th style={{ textAlign: 'right' }}>Platform Fee</th>
                                     <th style={{ textAlign: 'right' }}>Pencairan</th>
@@ -709,12 +720,10 @@ export default function KeuanganTiktokPage() {
                                             <td>{(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}</td>
                                             <td>
                                                 <div className="cell-main" style={{ fontFamily: 'monospace' }}>{item.order_id || '-'}</div>
+                                                <div className="cell-date" style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{fmtDate(item.settlement_date)}</div>
                                             </td>
                                             <td>
                                                 <div className="cell-main">{item.store || '-'}</div>
-                                            </td>
-                                            <td>
-                                                <div className="cell-date">{fmtDate(item.settlement_date)}</div>
                                             </td>
                                             <td style={{ textAlign: 'right' }}>
                                                 <div className="cell-currency">{fmt(item.harga_jual)}</div>
@@ -754,17 +763,16 @@ export default function KeuanganTiktokPage() {
                                 return (
                                     <div key={item.id || idx} className="data-card">
                                         <div className="data-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span className="data-card-number" style={{ fontFamily: 'monospace', fontSize: '12px' }}>{item.order_id}</span>
+                                            <div>
+                                                <div className="data-card-number" style={{ fontFamily: 'monospace', fontSize: '13px' }}>{item.order_id}</div>
+                                                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>{fmtDate(item.settlement_date)}</div>
+                                            </div>
                                             {isMatch ? <span className="badge badge-success">Match</span> : <span className="badge badge-danger">Unmatch</span>}
                                         </div>
                                         <div className="data-card-body">
                                             <div className="data-card-row">
                                                 <span className="data-card-label">Store</span>
                                                 <span className="data-card-value">{item.store || '-'}</span>
-                                            </div>
-                                            <div className="data-card-row">
-                                                <span className="data-card-label">Settlement</span>
-                                                <span className="data-card-value">{fmtDate(item.settlement_date)}</span>
                                             </div>
                                             <div className="data-card-row">
                                                 <span className="data-card-label">Harga Jual</span>

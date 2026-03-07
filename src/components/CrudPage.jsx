@@ -9,7 +9,8 @@ export default function CrudPage({
     formFields = [],
     defaultSort = 'created_at',
     extraFilters = null,
-    onValidate = null
+    onValidate = null,
+    onFormChange = null
 }) {
     const [data, setData] = useState([])
     const [loading, setLoading] = useState(true)
@@ -103,7 +104,11 @@ export default function CrudPage({
     }
 
     function handleChange(e) {
-        setFormData({ ...formData, [e.target.name]: e.target.value })
+        const nextData = { ...formData, [e.target.name]: e.target.value }
+        setFormData(nextData)
+        if (onFormChange) {
+            onFormChange(e.target.name, e.target.value, nextData, formFields)
+        }
     }
 
     const filteredData = data.filter(item => {

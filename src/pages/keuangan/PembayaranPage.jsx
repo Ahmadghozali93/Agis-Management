@@ -13,7 +13,7 @@ function fmtDate(d) {
 export default function PembayaranPage() {
     const [payments, setPayments] = useState([])
     const [pendingPurchases, setPendingPurchases] = useState([])
-    const [bankAccounts, setBankAccounts] = useState([])
+    const [kasAccounts, setKasAccounts] = useState([])
     const [loading, setLoading] = useState(true)
     const [showForm, setShowForm] = useState(false)
     const [error, setError] = useState(null)
@@ -31,15 +31,15 @@ export default function PembayaranPage() {
 
     async function loadData() {
         setLoading(true)
-        const [payRes, purRes, bankRes] = await Promise.all([
+        const [payRes, purRes, kasRes] = await Promise.all([
             supabase.from('payments').select('*').order('created_at', { ascending: false }),
             supabase.from('purchases').select('*').in('status', ['belum_lunas', 'pending']).order('created_at', { ascending: false }),
-            supabase.from('bank_accounts').select('*').order('bank_name')
+            supabase.from('coa').select('id, code, name, description').eq('account_group', 'Kas/Bank').order('code').order('name')
         ])
 
         if (payRes.data) setPayments(payRes.data)
         if (purRes.data) setPendingPurchases(purRes.data)
-        if (bankRes.data) setBankAccounts(bankRes.data)
+        if (kasRes.data) setKasAccounts(kasRes.data)
         setLoading(false)
     }
 
@@ -62,15 +62,15 @@ export default function PembayaranPage() {
         if (!accountId) return setError("Pilih Akun Kas/Bank untuk pembayaran.")
 
         const pur = pendingPurchases.find(x => x.id === selectedPurchaseId)
-        const bank = bankAccounts.find(x => x.id === accountId)
-        if (!pur || !bank) return setError("Data tidak valid.")
+        const kas = kasAccounts.find(x => x.id === accountId)
+        if (!pur || !kas) return setError("Data tidak valid.")
 
         try {
             // 1. Catat di tabel payments
             const { error: err1 } = await supabase.from('payments').insert([{
                 description,
                 amount: Number(amount),
-                method: `${bank.bank_name} - ${bank.account_number}`,
+                method: kas.code ? `[${kas.code}] ${kas.name}` : kas.name,
                 date
             }])
             if (err1) throw err1
@@ -126,9 +126,11 @@ export default function PembayaranPage() {
                             <div className="form-group">
                                 <label>Akun Kas / Bank (Sumber Dana)</label>
                                 <select className="form-input" value={accountId} onChange={e => setAccountId(e.target.value)} required>
-                                    <option value="">-- Pilih Bank --</option>
-                                    {bankAccounts.map(b => (
-                                        <option key={b.id} value={b.id}>{b.bank_name} - {b.account_number} ({b.account_name})</option>
+                                    <option value="">-- Pilih Akun Kas/Bank --</option>
+                                    {kasAccounts.map(a => (
+                                        <option key={a.id} value={a.id}>
+                                            {a.code ? `[${a.code}] ${a.name}` : a.name}{a.description ? ` - ${a.description}` : ''}
+                                        </option>
                                     ))}
                                 </select>
                             </div>
