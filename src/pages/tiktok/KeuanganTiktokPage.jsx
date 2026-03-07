@@ -454,56 +454,40 @@ export default function KeuanganTiktokPage() {
             <div className="stats-grid" style={{ marginBottom: '24px' }}>
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                            width: '48px', height: '48px', borderRadius: '12px',
-                            background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
-                        }}>💵</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6' }}>💵</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>Total Pesanan</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{filtered.length.toLocaleString('id-ID')}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Total Pesanan</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{filtered.length.toLocaleString('id-ID')}</h3>
                         </div>
                     </div>
                 </div>
 
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                            width: '48px', height: '48px', borderRadius: '12px',
-                            background: 'rgba(16, 185, 129, 0.1)', color: '#10b981',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
-                        }}>💰</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981' }}>💰</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>Dana Bisa Dicairkan</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{fmt(danaTercairkan)}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Dana Bisa Dicairkan</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{fmt(danaTercairkan)}</h3>
                         </div>
                     </div>
                 </div>
 
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                            width: '48px', height: '48px', borderRadius: '12px',
-                            background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
-                        }}>📉</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}>📉</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>Total Platform Fee</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{fmt(totalPlatformFee)}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Total Platform Fee</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{fmt(totalPlatformFee)}</h3>
                         </div>
                     </div>
                 </div>
 
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                            width: '48px', height: '48px', borderRadius: '12px',
-                            background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
-                        }}>✅</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b' }}>✅</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>Pesanan Cocok</p>
-                            <h3 style={{ margin: 0, fontSize: '24px', fontWeight: 'bold' }}>{totalPesananCocok}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Pesanan Cocok</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{totalPesananCocok}</h3>
                         </div>
                     </div>
                 </div>

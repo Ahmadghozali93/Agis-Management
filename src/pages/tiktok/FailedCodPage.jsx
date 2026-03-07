@@ -379,53 +379,37 @@ export default function FailedCodPage() {
             <div className="stats-grid" style={{ marginBottom: '24px' }}>
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                            width: '48px', height: '48px', borderRadius: '12px',
-                            background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
-                        }}>📦</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}>📦</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>Total Paket Retur</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{filtered.length.toLocaleString('id-ID')}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Total Paket Retur</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{filtered.length.toLocaleString('id-ID')}</h3>
                         </div>
                     </div>
                 </div>
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                            width: '48px', height: '48px', borderRadius: '12px',
-                            background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
-                        }}>⌛</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6' }}>⌛</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>Diproses</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{filtered.filter(f => (f.failed_cod_record?.return_status || 'Diproses') === 'Diproses').length.toLocaleString('id-ID')}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Diproses</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{filtered.filter(f => (f.failed_cod_record?.return_status || 'Diproses') === 'Diproses').length.toLocaleString('id-ID')}</h3>
                         </div>
                     </div>
                 </div>
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                            width: '48px', height: '48px', borderRadius: '12px',
-                            background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
-                        }}>✅</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e' }}>✅</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>Diterima</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{filtered.filter(f => f.failed_cod_record?.return_status === 'Diterima').length.toLocaleString('id-ID')}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Diterima</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{filtered.filter(f => f.failed_cod_record?.return_status === 'Diterima').length.toLocaleString('id-ID')}</h3>
                         </div>
                     </div>
                 </div>
                 <div className="stat-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                            width: '48px', height: '48px', borderRadius: '12px',
-                            background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
-                        }}>❌</div>
+                        <div className="stat-card-icon" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}>❌</div>
                         <div>
-                            <p style={{ margin: '0 0 4px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>Hilang</p>
-                            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{filtered.filter(f => f.failed_cod_record?.return_status === 'Hilang').length.toLocaleString('id-ID')}</h3>
+                            <p className="stat-card-label" style={{ margin: '0 0 2px 0' }}>Hilang</p>
+                            <h3 className="stat-card-value" style={{ margin: 0 }}>{filtered.filter(f => f.failed_cod_record?.return_status === 'Hilang').length.toLocaleString('id-ID')}</h3>
                         </div>
                     </div>
                 </div>
