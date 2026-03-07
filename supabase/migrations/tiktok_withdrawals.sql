@@ -1,0 +1,1 @@
+CREATE TABLE tiktok_withdrawals (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), store TEXT, target_bank TEXT, amount NUMERIC, withdraw_date TIMESTAMP WITH TIME ZONE, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW());

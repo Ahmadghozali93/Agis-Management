@@ -25,6 +25,16 @@ export default function KeuanganTiktokPage() {
     // Matched orders from tiktok_sales cache to avoid N+1 queries during render
     const [matchedOrders, setMatchedOrders] = useState(new Set())
 
+    // Withdraw Modal State
+    const [showWithdrawModal, setShowWithdrawModal] = useState(false)
+    const [withdrawStore, setWithdrawStore] = useState('')
+    const [withdrawAmount, setWithdrawAmount] = useState('')
+    const [withdrawTargetBank, setWithdrawTargetBank] = useState('')
+    const [withdrawDate, setWithdrawDate] = useState(new Date().toISOString().substring(0, 10))
+    const [withdrawing, setWithdrawing] = useState(false)
+    const [withdrawalsTableExists, setWithdrawalsTableExists] = useState(true)
+    const [accumulatedWithdrawals, setAccumulatedWithdrawals] = useState({}) // { storeName: totalWithdrawnAmount }
+
     // Pagination
     const [currentPage, setCurrentPage] = useState(1)
     const ITEMS_PER_PAGE = 20
@@ -70,6 +80,28 @@ export default function KeuanganTiktokPage() {
                     const matched = new Set(salesData.map(s => s.order_id))
                     setMatchedOrders(matched)
                 }
+            }
+
+            // Fetch accumulated withdrawals to calculate remaining balance
+            const { data: withdrawalsData, error: withdrawalsError } = await supabase
+                .from('tiktok_withdrawals')
+                .select('store, amount')
+
+            if (withdrawalsError) {
+                if (withdrawalsError.code === '42P01') {
+                    // Sequence/Table does not exist error
+                    setWithdrawalsTableExists(false)
+                } else {
+                    console.error("Fetch withdrawals error:", withdrawalsError)
+                }
+            } else if (withdrawalsData) {
+                const acc = {}
+                withdrawalsData.forEach(w => {
+                    const storeName = w.store || 'Unknown'
+                    acc[storeName] = (acc[storeName] || 0) + Number(w.amount || 0)
+                })
+                setAccumulatedWithdrawals(acc)
+                setWithdrawalsTableExists(true)
             }
 
             // 3. Fetch unique stores for dropdown
@@ -278,6 +310,73 @@ export default function KeuanganTiktokPage() {
         }
     }
 
+    // --- Withdraw Logic ---
+    const handleOpenWithdraw = () => {
+        setWithdrawStore(tokoFilter === 'all' ? storeOptions[0] || '' : tokoFilter)
+        setShowWithdrawModal(true)
+    }
+
+    const getMaxWithdrawable = (storeName) => {
+        if (!storeName) return 0
+        const storeMatchedOrders = filtered.filter(item => matchedOrders.has(item.order_id) && (item.store || '') === storeName)
+        const totalSettlement = storeMatchedOrders.reduce((sum, item) => sum + (Number(item.pencairan) || 0), 0)
+        const withdrawnAlready = accumulatedWithdrawals[storeName] || 0
+        return Math.max(0, totalSettlement - withdrawnAlready)
+    }
+
+    // Auto-update amount when store changes in modal
+    useEffect(() => {
+        if (showWithdrawModal) {
+            setWithdrawAmount(getMaxWithdrawable(withdrawStore))
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [withdrawStore, showWithdrawModal])
+
+    const handleWithdrawSubmit = async (e) => {
+        e.preventDefault()
+        if (!withdrawalsTableExists) {
+            setError("Tabel pencairan belum tersedia. Harap buat tabel `tiktok_withdrawals` di Supabase.")
+            return
+        }
+        setWithdrawing(true)
+        setError(null)
+        try {
+            const amountNum = Number(withdrawAmount)
+            if (amountNum <= 0) throw new Error("Nominal penarikan harus lebih dari 0")
+
+            const maxAllowed = getMaxWithdrawable(withdrawStore)
+            if (amountNum > maxAllowed) throw new Error(`Nominal penarikan melebihi batas maksimal untuk toko ini (${fmt(maxAllowed)})`)
+
+            // 1. Insert into tiktok_withdrawals
+            const { error: withdrawErr } = await supabase.from('tiktok_withdrawals').insert([{
+                store: withdrawStore,
+                amount: amountNum,
+                target_bank: withdrawTargetBank,
+                withdraw_date: new Date(withdrawDate).toISOString()
+            }])
+            if (withdrawErr) throw withdrawErr
+
+            // 2. Insert into incomes
+            const { error: incomeErr } = await supabase.from('incomes').insert([{
+                source: `Pencairan TikTok - ${withdrawStore}`,
+                amount: amountNum,
+                note: `Masuk ke ${withdrawTargetBank || 'Bank'}`,
+                date: new Date(withdrawDate).toISOString().substring(0, 10)
+            }])
+            if (incomeErr) throw incomeErr
+
+            setImportResult({ success: true, count: 1, message: `Berhasil mencairkan dana sebesar ${fmt(amountNum)} ke ${withdrawTargetBank}` })
+            setShowWithdrawModal(false)
+            setWithdrawTargetBank('')
+            fetchData() // Refresh balances
+        } catch (err) {
+            console.error("Withdraw error:", err)
+            setError(err.message)
+        } finally {
+            setWithdrawing(false)
+        }
+    }
+
     const applyFilters = () => {
         let result = [...data]
 
@@ -364,8 +463,18 @@ export default function KeuanganTiktokPage() {
     // Metrics calculation
     const matchedFiltered = filtered.filter(item => matchedOrders.has(item.order_id))
 
-    // Dana Bisa Dicairkan is computed only for matched rows
-    const danaTercairkan = matchedFiltered.reduce((sum, item) => sum + (Number(item.pencairan) || 0), 0)
+    // Dana Bisa Dicairkan is computed only for matched rows minus the accumulated withdrawals that apply to the filtered stores
+    // If tokoFilter is 'all', we sum all matched settlements and subtract ALL accumulated withdrawals
+    let totalSettlement = matchedFiltered.reduce((sum, item) => sum + (Number(item.pencairan) || 0), 0)
+    let totalWithdrawnFromFiltered = 0;
+
+    if (tokoFilter === 'all') {
+        totalWithdrawnFromFiltered = Object.values(accumulatedWithdrawals).reduce((sum, val) => sum + val, 0)
+    } else {
+        totalWithdrawnFromFiltered = accumulatedWithdrawals[tokoFilter] || 0
+    }
+
+    const danaTercairkan = Math.max(0, totalSettlement - totalWithdrawnFromFiltered)
 
     // Total Platform fee is computed only for matched rows
     const totalPlatformFee = matchedFiltered.reduce((sum, item) => sum + (Number(item.platform_fee) || 0), 0)
@@ -399,16 +508,19 @@ export default function KeuanganTiktokPage() {
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: '12px' }}>
+                    {!withdrawalsTableExists && (
+                        <div className="badge badge-danger" title="Tabel tiktok_withdrawals tidak ditemukan">⚠️ DB Missing</div>
+                    )}
                     <button
                         className="btn btn-secondary"
-                        onClick={handleSyncUnmatched}
-                        disabled={syncing || importing}
+                        onClick={handleOpenWithdraw}
+                        disabled={importing || withdrawing || !withdrawalsTableExists}
                         style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                     >
-                        {syncing ? (
-                            <><div className="spinner" style={{ width: '16px', height: '16px', borderWidth: '2px', borderColor: 'var(--primary-color) transparent transparent transparent' }}></div> Syncing...</>
+                        {withdrawing ? (
+                            <><div className="spinner" style={{ width: '16px', height: '16px', borderWidth: '2px', borderColor: 'var(--primary-color) transparent transparent transparent' }}></div> Wait...</>
                         ) : (
-                            <><span>🔄</span> Sync Match</>
+                            <><span>💸</span> Withdraw</>
                         )}
                     </button>
 
@@ -721,6 +833,90 @@ export default function KeuanganTiktokPage() {
                             </button>
                         </div>
                     </div>
+                </div>
+            )}
+            {/* Modal Withdraw Dana */}
+            {showWithdrawModal && (
+                <div className="modal-backdrop" style={{
+                    position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+                    background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', zIndex: 1000
+                }}>
+                    <form className="card" onSubmit={handleWithdrawSubmit} style={{ width: '400px', padding: '24px', background: 'var(--bg-card)' }}>
+                        <h3 style={{ margin: '0 0 12px 0' }}>💸 Withdraw Dana Pencairan</h3>
+                        <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: 'var(--text-secondary)' }}>
+                            Pencairan dana dari TikTok akan dicatat dan otomatis masuk ke laporan Pemasukan.
+                        </p>
+
+                        <div className="form-group" style={{ marginBottom: '16px' }}>
+                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>Toko / Akun TikTok</label>
+                            <select
+                                className="form-input"
+                                value={withdrawStore}
+                                onChange={e => setWithdrawStore(e.target.value)}
+                                style={{ width: '100%' }}
+                                required
+                            >
+                                <option value="">-- Pilih Toko --</option>
+                                {storeOptions.map(st => (
+                                    <option key={st} value={st}>{st}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="form-group" style={{ marginBottom: '16px' }}>
+                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>Dana Tersedia</label>
+                            <div className="form-input" style={{ width: '100%', background: 'var(--bg-secondary)', cursor: 'not-allowed' }}>
+                                {fmt(getMaxWithdrawable(withdrawStore))}
+                            </div>
+                        </div>
+
+                        <div className="form-group" style={{ marginBottom: '16px' }}>
+                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>Nominal Penarikan (Rp)</label>
+                            <input
+                                type="number"
+                                className="form-input"
+                                value={withdrawAmount}
+                                onChange={e => setWithdrawAmount(e.target.value)}
+                                style={{ width: '100%' }}
+                                min="1"
+                                max={getMaxWithdrawable(withdrawStore)}
+                                required
+                            />
+                        </div>
+
+                        <div className="form-group" style={{ marginBottom: '16px' }}>
+                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>Bank Tujuan</label>
+                            <input
+                                type="text"
+                                className="form-input"
+                                value={withdrawTargetBank}
+                                onChange={e => setWithdrawTargetBank(e.target.value)}
+                                placeholder="Cth: BCA 1234567890 an Budi"
+                                style={{ width: '100%' }}
+                                required
+                            />
+                        </div>
+
+                        <div className="form-group" style={{ marginBottom: '24px' }}>
+                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>Tanggal Penarikan</label>
+                            <input
+                                type="date"
+                                className="form-input"
+                                value={withdrawDate}
+                                onChange={e => setWithdrawDate(e.target.value)}
+                                style={{ width: '100%' }}
+                                required
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                            <button type="button" className="btn btn-secondary" onClick={() => setShowWithdrawModal(false)}>Batal</button>
+                            <button type="submit" className="btn btn-primary" disabled={withdrawing || !withdrawStore || Number(withdrawAmount) <= 0}>
+                                {withdrawing ? 'Memproses...' : 'Tarik Dana'}
+                            </button>
+                        </div>
+                    </form>
                 </div>
             )}
         </div>
