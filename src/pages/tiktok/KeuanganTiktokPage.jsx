@@ -290,10 +290,6 @@ export default function KeuanganTiktokPage() {
             }
         }
 
-        // 0.5 Toko filter
-        if (tokoFilter !== 'all') {
-            result = result.filter(item => item.store === tokoFilter)
-        }
 
         // 1. Search filter
         if (searchTerm) {
@@ -507,17 +503,7 @@ export default function KeuanganTiktokPage() {
                         />
                     </div>
                     <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                        <select
-                            className="form-input"
-                            value={tokoFilter}
-                            onChange={(e) => setTokoFilter(e.target.value)}
-                            style={{ width: 'auto' }}
-                        >
-                            <option value="all">Semua Toko</option>
-                            {[...new Set(data.map(d => d.store).filter(Boolean))].map(store => (
-                                <option key={store} value={store}>{store}</option>
-                            ))}
-                        </select>
+
                         <select
                             className="form-input"
                             value={statusFilter}
