@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 
+function fmt(num) {
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num || 0)
+}
+
 export default function StokOverviewPage() {
     const [products, setProducts] = useState([])
     const [loading, setLoading] = useState(true)
@@ -10,21 +14,84 @@ export default function StokOverviewPage() {
 
     async function loadProducts() {
         try {
-            const [prodRes, mutRes] = await Promise.all([
+            const [prodRes, mutRes, purRes, fcRes, retRes, salesRes] = await Promise.all([
                 supabase.from('products').select('*').order('name'),
-                supabase.from('stock_mutations').select('product_name, sku, type, qty')
+                supabase.from('stock_mutations').select('product_name, sku, type, qty'),
+                supabase.from('purchases').select('items, status').neq('status', 'batal'),
+                supabase.from('tiktok_failed_cod').select('order_id, return_status'),
+                supabase.from('tiktok_returns').select('order_id, status'),
+                supabase.from('tiktok_sales')
+                    .select('order_id, order_status, product_name, seller_sku, quantity')
+                    .or('order_status.ilike.%RTS%,order_status.ilike.%Failed%,order_status.ilike.%Gagal%,order_status.ilike.%Return%,order_status.ilike.%Retur%')
             ])
             if (prodRes.error) throw prodRes.error
             if (mutRes.error) throw mutRes.error
 
             const mutations = mutRes.data || []
+
+            // Extract all purchased items for HPP calculation
+            const allPurchasedItems = []
+                ; (purRes.data || []).forEach(p => {
+                    let pItems = p.items
+                    if (typeof pItems === 'string') {
+                        try { pItems = JSON.parse(pItems) } catch (e) { pItems = [] }
+                    }
+                    if (Array.isArray(pItems)) {
+                        allPurchasedItems.push(...pItems)
+                    }
+                })
+
+            const fcMap = new Map()
+                ; (fcRes?.data || []).forEach(f => fcMap.set(f.order_id, (f.return_status || '').toLowerCase()))
+
+            const retMap = new Map()
+                ; (retRes?.data || []).forEach(r => retMap.set(r.order_id, (r.status || '').toLowerCase()))
+
+            const isDone = s => ['selesai', 'completed', 'done', 'selesai otomatis'].includes(s)
+
+            const activeReturnSales = (salesRes?.data || []).filter(s => {
+                const fcStatus = fcMap.get(s.order_id)
+                const retStatus = retMap.get(s.order_id)
+                if (fcStatus && isDone(fcStatus)) return false
+                if (retStatus && isDone(retStatus)) return false
+                return true
+            })
+
             const computedProducts = (prodRes.data || []).map(p => {
+                // Calculate dynamic stock
                 const prodMutations = mutations.filter(m => m.sku ? m.sku === p.sku : m.product_name === p.name)
                 const computedStock = prodMutations.reduce((sum, m) => {
                     const q = Number(m.qty) || 0
                     return m.type === 'in' ? sum + q : sum - q
                 }, 0)
-                return { ...p, stock: computedStock } // replacing static stock with dynamic computedStock
+
+                // Calculate average HPP from purchases
+                const pItems = allPurchasedItems.filter(it => it.product_id === p.id || (it.sku && p.sku && it.sku === p.sku) || it.name === p.name)
+                let totalCost = 0
+                let totalQty = 0
+                pItems.forEach(it => {
+                    const q = Number(it.qty) || 0
+                    const price = Number(it.price) || 0
+                    totalCost += (q * price)
+                    totalQty += q
+                })
+                const avgHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : (p.hpp || 0)
+
+                // Calculate Return in process
+                const prodReturns = activeReturnSales.filter(s => s.seller_sku ? s.seller_sku === p.sku : s.product_name === p.name)
+                const returnQty = prodReturns.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0)
+
+                const endingStock = computedStock + returnQty
+                const stockValue = endingStock * avgHpp
+
+                return {
+                    ...p,
+                    stock: computedStock,
+                    avg_hpp: avgHpp,
+                    return_qty: returnQty,
+                    ending_stock: endingStock,
+                    stock_value: stockValue
+                }
             })
 
             setProducts(computedProducts)
@@ -80,6 +147,13 @@ export default function StokOverviewPage() {
                     </div>
                     <div className="stat-card-value">{products.filter(p => p.stock <= 0).length}</div>
                 </div>
+                <div className="stat-card" style={{ gridColumn: '1 / -1', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                    <div className="stat-card-header">
+                        <span className="stat-card-label" style={{ fontWeight: 'bold' }}>Total Valuasi Stok (Ending x HPP)</span>
+                        <div className="stat-card-icon" style={{ background: 'var(--primary-color)', color: 'white' }}>💎</div>
+                    </div>
+                    <div className="stat-card-value">{fmt(filtered.reduce((sum, p) => sum + (p.stock_value || 0), 0))}</div>
+                </div>
             </div>
 
             <div className="table-container">
@@ -102,7 +176,11 @@ export default function StokOverviewPage() {
                                     <th>No</th>
                                     <th>Produk</th>
                                     <th>SKU</th>
-                                    <th>Stok</th>
+                                    <th style={{ textAlign: 'right' }}>HPP Rata-rata</th>
+                                    <th style={{ textAlign: 'right' }}>Stok Gudang</th>
+                                    <th style={{ textAlign: 'right' }}>Return (Proses)</th>
+                                    <th style={{ textAlign: 'right' }}>Ending Stock</th>
+                                    <th style={{ textAlign: 'right' }}>Total Valuasi</th>
                                     <th>Status</th>
                                 </tr>
                             </thead>
@@ -112,8 +190,12 @@ export default function StokOverviewPage() {
                                         <td>{i + 1}</td>
                                         <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</td>
                                         <td>{p.sku || '-'}</td>
-                                        <td style={{ fontWeight: 700 }}>{(p.stock || 0).toLocaleString('id-ID')}</td>
-                                        <td>{getStockStatus(p.stock)}</td>
+                                        <td style={{ textAlign: 'right', fontWeight: 500 }}>{fmt(p.avg_hpp)}</td>
+                                        <td style={{ fontWeight: 700, textAlign: 'right' }}>{(p.stock || 0).toLocaleString('id-ID')}</td>
+                                        <td style={{ fontWeight: 600, textAlign: 'right', color: 'var(--text-warning)' }}>{(p.return_qty || 0).toLocaleString('id-ID')}</td>
+                                        <td style={{ fontWeight: 700, textAlign: 'right', color: 'var(--primary-color)' }}>{(p.ending_stock || 0).toLocaleString('id-ID')}</td>
+                                        <td style={{ fontWeight: 600, textAlign: 'right' }}>{fmt(p.stock_value)}</td>
+                                        <td>{getStockStatus(p.ending_stock)}</td>
                                     </tr>
                                 ))}
                             </tbody>

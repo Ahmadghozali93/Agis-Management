@@ -28,6 +28,7 @@ export default function PembelianPage() {
     const [searchTerm, setSearchTerm] = useState('')
     const [filterSupplier, setFilterSupplier] = useState('')
     const [filterProduct, setFilterProduct] = useState('')
+    const [showUnpaidOnly, setShowUnpaidOnly] = useState(true)
 
     // Options
     const [suppliers, setSuppliers] = useState([])
@@ -266,6 +267,8 @@ export default function PembelianPage() {
 
         if (filterSupplier && p.supplier_name !== filterSupplier) match = false
 
+        if (showUnpaidOnly && !['belum_lunas', 'pending'].includes(p.status)) match = false
+
         if (filterProduct) {
             const hasProduct = p.items?.some(it => it.product_id === filterProduct || it.name === filterProduct)
             if (!hasProduct) match = false
@@ -399,6 +402,10 @@ export default function PembelianPage() {
                                 <option value="">Semua Produk</option>
                                 {(products || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                             </select>
+                            <label style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0, fontWeight: 'normal', color: 'var(--text-secondary)' }}>
+                                <input type="checkbox" checked={showUnpaidOnly} onChange={e => setShowUnpaidOnly(e.target.checked)} />
+                                Hanya Tampilkan Belum Lunas / Pending
+                            </label>
                         </div>
                     </div>
                     <div className="table-responsive">

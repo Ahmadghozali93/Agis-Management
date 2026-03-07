@@ -33,7 +33,7 @@ export default function PembayaranPage() {
         setLoading(true)
         const [payRes, purRes, bankRes] = await Promise.all([
             supabase.from('payments').select('*').order('created_at', { ascending: false }),
-            supabase.from('purchases').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
+            supabase.from('purchases').select('*').in('status', ['belum_lunas', 'pending']).order('created_at', { ascending: false }),
             supabase.from('bank_accounts').select('*').order('bank_name')
         ])
 
