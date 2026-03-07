@@ -1,30 +1,211 @@
-import CrudPage from '../../components/CrudPage'
+import { useState, useEffect } from 'react'
+import { supabase } from '../../lib/supabase'
+
+function fmtDate(d) {
+    if (!d) return '-'
+    return new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+}
 
 export default function StokMutationPage() {
+    const [mutations, setMutations] = useState([])
+    const [products, setProducts] = useState([])
+    const [loading, setLoading] = useState(true)
+    const [showForm, setShowForm] = useState(false)
+    const [error, setError] = useState(null)
+
+    // Form Stats
+    const [id, setId] = useState('')
+    const [productName, setProductName] = useState('')
+    const [productSku, setProductSku] = useState('')
+    const [type, setType] = useState('in')
+    const [qty, setQty] = useState('')
+    const [note, setNote] = useState('')
+    const [date, setDate] = useState(new Date().toISOString().substring(0, 10))
+
+    useEffect(() => {
+        loadData()
+    }, [])
+
+    async function loadData() {
+        setLoading(true)
+        const [mutRes, prodRes] = await Promise.all([
+            supabase.from('stock_mutations').select('*').order('created_at', { ascending: false }),
+            supabase.from('products').select('name, sku').order('name')
+        ])
+        if (mutRes.data) setMutations(mutRes.data)
+        if (prodRes.data) setProducts(prodRes.data)
+        setLoading(false)
+    }
+
+    async function syncProductStock(skuToSync) {
+        if (!skuToSync) return
+
+        // 1. Get all mutations for this sku
+        const { data: mutRes } = await supabase.from('stock_mutations').select('type, qty').eq('sku', skuToSync)
+        if (!mutRes) return
+
+        // 2. Count it up
+        const newStock = mutRes.reduce((acc, curr) => {
+            const q = Number(curr.qty) || 0
+            return curr.type === 'in' ? acc + q : acc - q
+        }, 0)
+
+        // 3. Update the products table
+        await supabase.from('products').update({ stock: newStock }).eq('sku', skuToSync)
+    }
+
+    const openCreate = () => {
+        setId('')
+        setProductName('')
+        setProductSku('')
+        setType('in')
+        setQty('')
+        setNote('')
+        setDate(new Date().toISOString().substring(0, 10))
+        setShowForm(true)
+    }
+
+    const handleSave = async (e) => {
+        e.preventDefault()
+        setError(null)
+        try {
+            const payload = {
+                product_name: productName,
+                sku: productSku,
+                type,
+                qty: Number(qty),
+                note,
+                date
+            }
+            if (id) {
+                const { error } = await supabase.from('stock_mutations').update(payload).eq('id', id)
+                if (error) throw error
+            } else {
+                const { error } = await supabase.from('stock_mutations').insert([payload])
+                if (error) throw error
+            }
+
+            await syncProductStock(productSku)
+
+            setShowForm(false)
+            loadData()
+        } catch (err) {
+            setError(err.message)
+        }
+    }
+
+
+
     return (
-        <CrudPage
-            tableName="stock_mutations"
-            title="Stok Mutation"
-            icon="🔄"
-            columns={[
-                { key: 'product_name', label: 'Produk' },
-                { key: 'type', label: 'Tipe', format: 'badge', badgeMap: { 'in': 'badge-success', 'out': 'badge-danger' } },
-                { key: 'qty', label: 'Jumlah', format: 'number' },
-                { key: 'note', label: 'Catatan' },
-                { key: 'date', label: 'Tanggal', format: 'date' }
-            ]}
-            formFields={[
-                { name: 'product_name', label: 'Nama Produk', placeholder: 'Nama produk' },
-                {
-                    name: 'type', label: 'Tipe', type: 'select', options: [
-                        { value: 'in', label: 'Masuk (In)' },
-                        { value: 'out', label: 'Keluar (Out)' }
-                    ]
-                },
-                { name: 'qty', label: 'Jumlah', type: 'number', placeholder: '0' },
-                { name: 'note', label: 'Catatan', type: 'textarea', placeholder: 'Catatan mutasi stok', required: false },
-                { name: 'date', label: 'Tanggal', type: 'date' }
-            ]}
-        />
+        <div className="page-container" style={{ padding: '20px' }}>
+            <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                <div>
+                    <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>🔄 Stok Mutasi</h1>
+                    <p style={{ color: 'var(--text-secondary)' }}>Manajemen barang masuk dan barang keluar.</p>
+                </div>
+                {!showForm && (
+                    <button className="btn btn-primary" onClick={openCreate}>+ Catat Mutasi</button>
+                )}
+            </div>
+
+            {showForm ? (
+                <div className="card">
+                    <form onSubmit={handleSave}>
+                        <h3 style={{ marginBottom: '20px' }}>{id ? 'Edit Mutasi' : 'Catat Mutasi Baru'}</h3>
+                        {error && <div className="alert alert-danger" style={{ marginBottom: '20px' }}>{error}</div>}
+
+                        <div className="form-group" style={{ marginBottom: '16px' }}>
+                            <label>Produk</label>
+                            <select
+                                className="form-input"
+                                value={productSku}
+                                onChange={e => {
+                                    const val = e.target.value;
+                                    setProductSku(val);
+                                    const prod = products.find(p => p.sku === val);
+                                    if (prod) setProductName(prod.name);
+                                }}
+                                required
+                            >
+                                <option value="">-- Pilih Produk --</option>
+                                {products.map(p => (
+                                    <option key={p.sku || p.name} value={p.sku}>{p.name} {p.sku ? `(${p.sku})` : ''}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                            <div className="form-group">
+                                <label>Tipe Mutasi</label>
+                                <select className="form-input" value={type} onChange={e => setType(e.target.value)}>
+                                    <option value="in">Masuk (In)</option>
+                                    <option value="out">Keluar (Out)</option>
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label>Jumlah</label>
+                                <input type="number" className="form-input" value={qty} onChange={e => setQty(e.target.value)} required min="1" />
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+                            <div className="form-group">
+                                <label>Catatan</label>
+                                <input type="text" className="form-input" value={note} onChange={e => setNote(e.target.value)} placeholder="Alasan mutasi..." />
+                            </div>
+                            <div className="form-group">
+                                <label>Tanggal</label>
+                                <input type="date" className="form-input" value={date} onChange={e => setDate(e.target.value)} required />
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+                            <button type="button" className="btn btn-secondary" onClick={() => setShowForm(false)}>Batal</button>
+                            <button type="submit" className="btn btn-primary">Simpan Mutasi</button>
+                        </div>
+                    </form>
+                </div>
+            ) : (
+                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                    <div className="table-responsive">
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                            <thead style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
+                                <tr>
+                                    <th style={{ padding: '16px', textAlign: 'left' }}>Tanggal</th>
+                                    <th style={{ padding: '16px', textAlign: 'left' }}>Produk</th>
+                                    <th style={{ padding: '16px', textAlign: 'center' }}>Tipe</th>
+                                    <th style={{ padding: '16px', textAlign: 'center' }}>Jumlah</th>
+                                    <th style={{ padding: '16px', textAlign: 'left' }}>Catatan</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {loading ? (
+                                    <tr><td colSpan="5" style={{ padding: '20px', textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }}></div></td></tr>
+                                ) : mutations.length === 0 ? (
+                                    <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Belum ada data mutasi stok</td></tr>
+                                ) : (
+                                    mutations.map(m => (
+                                        <tr key={m.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                            <td style={{ padding: '16px' }}>{fmtDate(m.date)}</td>
+                                            <td style={{ padding: '16px', fontWeight: 600 }}>
+                                                {m.product_name}
+                                                {m.sku && <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{m.sku}</div>}
+                                            </td>
+                                            <td style={{ padding: '16px', textAlign: 'center' }}>
+                                                <span className={`badge ${m.type === 'in' ? 'badge-success' : 'badge-danger'}`}>
+                                                    {m.type === 'in' ? 'Masuk' : 'Keluar'}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '16px', textAlign: 'center', fontWeight: 'bold' }}>{m.qty}</td>
+                                            <td style={{ padding: '16px' }}>{m.note || '-'}</td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+        </div>
     )
 }

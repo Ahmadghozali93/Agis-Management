@@ -34,6 +34,7 @@ export default function KeuanganTiktokPage() {
     const [withdrawing, setWithdrawing] = useState(false)
     const [withdrawalsTableExists, setWithdrawalsTableExists] = useState(true)
     const [accumulatedWithdrawals, setAccumulatedWithdrawals] = useState({}) // { storeName: totalWithdrawnAmount }
+    const [bankAccounts, setBankAccounts] = useState([])
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1)
@@ -112,6 +113,15 @@ export default function KeuanganTiktokPage() {
                 const uniqueStores = [...new Set(storesData.map(s => s.warehouse_name).filter(Boolean))]
                 setStoreOptions(uniqueStores)
                 if (uniqueStores.length > 0) setSelectedStore(uniqueStores[0])
+            }
+
+            // 4. Fetch Bank Accounts for Withdraw
+            const { data: banksData } = await supabase
+                .from('bank_accounts')
+                .select('*')
+                .order('created_at', { ascending: true })
+            if (banksData) {
+                setBankAccounts(banksData)
             }
         } catch (error) {
             console.error('Error fetching data:', error)
@@ -887,15 +897,20 @@ export default function KeuanganTiktokPage() {
 
                         <div className="form-group" style={{ marginBottom: '16px' }}>
                             <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>Bank Tujuan</label>
-                            <input
-                                type="text"
+                            <select
                                 className="form-input"
                                 value={withdrawTargetBank}
                                 onChange={e => setWithdrawTargetBank(e.target.value)}
-                                placeholder="Cth: BCA 1234567890 an Budi"
                                 style={{ width: '100%' }}
                                 required
-                            />
+                            >
+                                <option value="">-- Pilih Bank / Kas Tujuan --</option>
+                                {bankAccounts.map(b => (
+                                    <option key={b.id} value={`${b.bank_name} - ${b.account_number} a.n ${b.account_name}`}>
+                                        {b.account_type === 'Kas' ? '💵' : '🏦'} {b.bank_name} {b.account_number ? `- ${b.account_number}` : ''} {b.account_name ? `(${b.account_name})` : ''}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
 
                         <div className="form-group" style={{ marginBottom: '24px' }}>

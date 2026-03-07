@@ -10,9 +10,18 @@ export default function AkunBankPage() {
                 { key: 'bank_name', label: 'Nama Bank' },
                 { key: 'account_number', label: 'No Rekening' },
                 { key: 'account_name', label: 'Atas Nama' },
+                { key: 'account_type', label: 'Jenis Akun' },
+                { key: 'coa', label: 'COA' },
                 { key: 'created_at', label: 'Dibuat', format: 'date' }
             ]}
             formFields={[
+                {
+                    name: 'account_type', label: 'Jenis Akun', type: 'select', options: [
+                        { value: 'Bank', label: 'Bank' },
+                        { value: 'Kas', label: 'Kas' },
+                        { value: 'E-Wallet', label: 'E-Wallet' }
+                    ]
+                },
                 {
                     name: 'bank_name', label: 'Nama Bank', type: 'select', options: [
                         { value: 'BCA', label: 'BCA' },
@@ -30,7 +39,8 @@ export default function AkunBankPage() {
                     ]
                 },
                 { name: 'account_number', label: 'Nomor Rekening', placeholder: '1234567890' },
-                { name: 'account_name', label: 'Atas Nama', placeholder: 'Nama pemilik rekening' }
+                { name: 'account_name', label: 'Atas Nama', placeholder: 'Nama pemilik rekening' },
+                { name: 'coa', label: 'Nomor COA', placeholder: 'Contoh: 1-10020', required: false }
             ]}
         />
     )

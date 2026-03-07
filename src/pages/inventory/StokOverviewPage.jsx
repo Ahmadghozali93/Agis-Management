@@ -10,12 +10,24 @@ export default function StokOverviewPage() {
 
     async function loadProducts() {
         try {
-            const { data, error } = await supabase
-                .from('products')
-                .select('*')
-                .order('name')
-            if (error) throw error
-            setProducts(data || [])
+            const [prodRes, mutRes] = await Promise.all([
+                supabase.from('products').select('*').order('name'),
+                supabase.from('stock_mutations').select('product_name, sku, type, qty')
+            ])
+            if (prodRes.error) throw prodRes.error
+            if (mutRes.error) throw mutRes.error
+
+            const mutations = mutRes.data || []
+            const computedProducts = (prodRes.data || []).map(p => {
+                const prodMutations = mutations.filter(m => m.sku ? m.sku === p.sku : m.product_name === p.name)
+                const computedStock = prodMutations.reduce((sum, m) => {
+                    const q = Number(m.qty) || 0
+                    return m.type === 'in' ? sum + q : sum - q
+                }, 0)
+                return { ...p, stock: computedStock } // replacing static stock with dynamic computedStock
+            })
+
+            setProducts(computedProducts)
         } catch (err) {
             console.error('Error:', err)
         } finally {
