@@ -318,8 +318,13 @@ export default function PenjualanTiktokPage() {
         }
     }
 
-    // Compute unique statuses and their counts based on the CURRENT filtered data (respecting date/search, ignoring status filter)
+    // Compute unique statuses and their counts based on the CURRENT filtered data (respecting date/search/toko, ignoring status filter)
     const baseFilteredForStats = data.filter(item => {
+        // Toko Filter
+        if (tokoFilter !== 'all') {
+            if ((item.warehouse_name || '') !== tokoFilter) return false
+        }
+
         // Search Check
         if (search) {
             const q = search.toLowerCase()
