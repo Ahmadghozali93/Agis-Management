@@ -8,6 +8,9 @@ export default function KeuanganTiktokPage() {
     const [loading, setLoading] = useState(true)
     const [importing, setImporting] = useState(false)
     const [importResult, setImportResult] = useState(null)
+    const [showConfirmModal, setShowConfirmModal] = useState(false)
+    const [importStats, setImportStats] = useState(null)
+    const [pendingImportData, setPendingImportData] = useState([])
     const [error, setError] = useState(null)
     const [searchTerm, setSearchTerm] = useState('')
     const [dateFilter, setDateFilter] = useState('all') // 7days, 30days, month, year, custom, all
@@ -217,17 +220,63 @@ export default function KeuanganTiktokPage() {
             }
 
             const existingKeys = new Set(existingRecords.map(record => record.order_id))
-            const firstDuplicate = uniqueData.find(item => existingKeys.has(item.order_id))
 
-            if (firstDuplicate) {
-                throw new Error(`Data ditolak! Ada data ganda yang sudah masuk sebelumnya (Order ID: ${firstDuplicate.order_id}).`)
+            const toInsert = []
+            let countDuplikat = 0
+
+            uniqueData.forEach(item => {
+                if (existingKeys.has(item.order_id)) {
+                    countDuplikat++
+                } else {
+                    toInsert.push(item)
+                }
+            })
+
+            // Preview matchedToUpdate before inserting
+            const orderIdsToUpdate = toInsert.map(item => item.order_id)
+            let matchedToUpdate = []
+            for (let i = 0; i < orderIdsToUpdate.length; i += 100) {
+                const chunk = orderIdsToUpdate.slice(i, i + 100)
+                const { data: matchedSales } = await supabase
+                    .from('tiktok_sales')
+                    .select('order_id')
+                    .in('order_id', chunk)
+
+                if (matchedSales) {
+                    matchedToUpdate = [...matchedToUpdate, ...matchedSales.map(s => s.order_id)]
+                }
             }
 
+            setImportStats({
+                berhasil: toInsert.length,
+                duplikat: countDuplikat,
+                matched: matchedToUpdate.length
+            })
+            setPendingImportData(toInsert)
+            setShowConfirmModal(true)
+
+        } catch (error) {
+            console.error('Import error:', error)
+            setError(error.message)
+            setImportResult({ error: error.message })
+        } finally {
+            setImporting(false)
+            if (fileInputRef.current) fileInputRef.current.value = ''
+        }
+    }
+
+    const confirmImport = async () => {
+        setShowConfirmModal(false)
+        setImporting(true)
+        setError(null)
+        setImportResult(null)
+
+        try {
             // Insert in batches
             let inserted = 0
             const batchSize = 50
-            for (let i = 0; i < uniqueData.length; i += batchSize) {
-                const batch = uniqueData.slice(i, i + batchSize)
+            for (let i = 0; i < pendingImportData.length; i += batchSize) {
+                const batch = pendingImportData.slice(i, i + batchSize)
                 const { error } = await supabase
                     .from('tiktok_finance')
                     .upsert(batch, { onConflict: 'order_id', ignoreDuplicates: false })
@@ -236,10 +285,10 @@ export default function KeuanganTiktokPage() {
             }
 
             // === Match & Update Sales Status to Selesai ===
-            // Identify which of these newly imported orderIds actually exist in tiktok_sales
+            const orderIdsToUpdate = pendingImportData.map(item => item.order_id)
             let matchedToUpdate = []
-            for (let i = 0; i < orderIdsToCheck.length; i += 100) {
-                const chunk = orderIdsToCheck.slice(i, i + 100)
+            for (let i = 0; i < orderIdsToUpdate.length; i += 100) {
+                const chunk = orderIdsToUpdate.slice(i, i + 100)
                 const { data: matchedSales } = await supabase
                     .from('tiktok_sales')
                     .select('order_id')
@@ -261,16 +310,28 @@ export default function KeuanganTiktokPage() {
                 }
             }
 
-            setImportResult({ success: true, count: uniqueData.length })
+            setImportResult({
+                success: true,
+                berhasil: inserted,
+                duplikat: importStats.duplikat,
+                matched: matchedToUpdate.length
+            })
             fetchData()
         } catch (error) {
-            console.error('Import error:', error)
+            console.error('Confirm Import error:', error)
             setError(error.message)
             setImportResult({ error: error.message })
         } finally {
             setImporting(false)
-            if (fileInputRef.current) fileInputRef.current.value = ''
+            setPendingImportData([])
+            setImportStats(null)
         }
+    }
+
+    const cancelImport = () => {
+        setShowConfirmModal(false)
+        setPendingImportData([])
+        setImportStats(null)
     }
 
     const [syncing, setSyncing] = useState(false)
@@ -568,15 +629,74 @@ export default function KeuanganTiktokPage() {
                 </div>
             </div>
 
-            {/* Error & Success Messages */}
+            {showConfirmModal && importStats && (
+                <div className="modal-overlay">
+                    <div className="modal-content" style={{ maxWidth: '500px' }}>
+                        <div className="modal-header">
+                            <h2>Konfirmasi Import Data Keuangan</h2>
+                            <button className="btn-close" onClick={cancelImport}>×</button>
+                        </div>
+                        <div className="modal-body">
+                            <p>Berikut adalah hasil pengecekan file yang diunggah:</p>
+                            <ul style={{ margin: '16px 0', paddingLeft: '24px', lineHeight: '1.6' }}>
+                                <li>✅ Akan ditambahkan: <b>{importStats.berhasil}</b> data</li>
+                                <li>🔄 Duplikat (diabaikan): <b>{importStats.duplikat}</b> data</li>
+                                {importStats.matched > 0 && (
+                                    <li>🔗 Match & Auto Selesai: <b>{importStats.matched}</b> order Penjualan</li>
+                                )}
+                            </ul>
+                            <p style={{ margin: '8px 0 0 0', fontSize: '13px' }}>*Catatan: Order di Penjualan yang terhubung akan otomatis berubah statusnya menjadi Selesai.</p>
+                            <br />
+                            {importStats.berhasil > 0 ? (
+                                <p>Apakah Anda yakin ingin memproses data tersebut ke dalam sistem?</p>
+                            ) : (
+                                <p style={{ color: 'var(--text-danger)' }}>Tidak ada data baru yang bisa di-import.</p>
+                            )}
+                        </div>
+                        <div className="modal-footer" style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+                            <button className="btn btn-secondary" onClick={cancelImport}>Batal</button>
+                            {importStats.berhasil > 0 && (
+                                <button className="btn btn-primary" onClick={confirmImport}>Ya, Input Data</button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {error && (
                 <div className="alert alert-danger" style={{ marginBottom: '20px' }}>
                     <strong>⚠️ Error:</strong> {error}
                 </div>
             )}
-            {importResult?.success && (
-                <div className="alert alert-success" style={{ marginBottom: '20px' }}>
-                    ✅ Berhasil mengimpor {importResult.count} data keuangan.
+            {importResult && (
+                <div className="modal-overlay">
+                    <div className="modal-content" style={{ maxWidth: '500px', borderTop: importResult.success ? '4px solid var(--success)' : '4px solid var(--danger)' }}>
+                        <div className="modal-header">
+                            <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {importResult.success ? '✅ Import Berhasil' : '⚠️ Import Gagal'}
+                            </h2>
+                            <button className="btn-close" onClick={() => setImportResult(null)}>×</button>
+                        </div>
+                        <div className="modal-body" style={{ padding: '20px' }}>
+                            {importResult.success ? (
+                                <div>
+                                    <p style={{ marginBottom: '16px', fontSize: '15px' }}>Rekap data yang berhasil diunggah:</p>
+                                    <ul style={{ margin: '0 0 16px 20px', lineHeight: '1.6' }}>
+                                        <li>Berhasil ditambahkan: <b style={{ color: 'var(--success)' }}>{importResult.berhasil}</b> data</li>
+                                        <li>Duplikat (diabaikan): <b style={{ color: 'var(--text-muted)' }}>{importResult.duplikat}</b> data</li>
+                                        {importResult.matched > 0 && (
+                                            <li>Match & Auto Selesai: <b style={{ color: 'var(--primary)' }}>{importResult.matched}</b> order Penjualan</li>
+                                        )}
+                                    </ul>
+                                </div>
+                            ) : (
+                                <p style={{ color: 'var(--danger)' }}>{importResult.message || importResult.error}</p>
+                            )}
+                        </div>
+                        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+                            <button className="btn btn-primary" onClick={() => setImportResult(null)}>Tutup</button>
+                        </div>
+                    </div>
                 </div>
             )}
 

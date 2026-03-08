@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { getAverageHpp } from '../../lib/stockUtils'
 import { parseCSV, parseXLSX, mapTiktokFailedCodRow } from '../../lib/csvParser'
 
 const STATUS_MAP = {
@@ -27,6 +28,9 @@ export default function FailedCodPage() {
     const [loading, setLoading] = useState(true)
     const [importing, setImporting] = useState(false)
     const [importResult, setImportResult] = useState(null)
+    const [showConfirmModal, setShowConfirmModal] = useState(false)
+    const [importStats, setImportStats] = useState(null)
+    const [pendingImportData, setPendingImportData] = useState([])
     const [error, setError] = useState(null)
     const [search, setSearch] = useState('')
     const [dateFilter, setDateFilter] = useState('all')
@@ -173,6 +177,44 @@ export default function FailedCodPage() {
                 return item
             }))
 
+            const item = data.find(d => d.order_id === orderId)
+            const oldStatus = item?.failed_cod_record?.return_status || 'Diproses'
+            const isVal = item?.failed_cod_record?.is_validated || false
+
+            if (isVal) {
+                alert('Data ini sudah divalidasi dan tidak bisa diubah lagi.');
+                return;
+            }
+
+            if (item && oldStatus !== newStatus) {
+                const qty = parseInt(item.quantity) || 0;
+
+                // Cleanup any existing mutation from previous status resolution
+                await supabase.from('stock_mutations').delete().like('description', `%Failed COD: ${orderId}%`)
+
+                // Insert new mutation if resolving to Diterima or Hilang
+                if (qty > 0 && (newStatus === 'Diterima' || newStatus === 'Hilang')) {
+                    const type = newStatus === 'Diterima' ? 'in' : 'out'
+                    const desc = `Retur ${newStatus} dari Failed COD: ${orderId}`
+
+                    const skuToUse = item.seller_sku || item.sku_id
+                    const avgHpp = await getAverageHpp(skuToUse, item.product_name)
+
+                    const { error: mutError } = await supabase.from('stock_mutations').insert([{
+                        product_name: item.product_name,
+                        sku: skuToUse,
+                        qty: qty,
+                        hpp: avgHpp,
+                        type: type,
+                        reference_id: orderId,
+                        description: desc,
+                        date: new Date().toISOString().substring(0, 10),
+                        created_at: new Date().toISOString()
+                    }])
+                    if (mutError) throw mutError
+                }
+            }
+
             const { error: updateError } = await supabase
                 .from('tiktok_failed_cod')
                 .update({ return_status: newStatus })
@@ -184,6 +226,47 @@ export default function FailedCodPage() {
             // Revert on error
             loadData()
             alert('Gagal mengupdate status: ' + err.message)
+        }
+    }
+
+    const handleValidate = async (orderId) => {
+        try {
+            if (!window.confirm('Validasi retur ini? Setelah divalidasi, status dan stok tidak bisa diubah lagi.')) return;
+
+            // Optimistic UI update
+            setData(prevData => prevData.map(item => {
+                const failedRec = item.failed_cod_record || {}
+                if (item.order_id === orderId) {
+                    return {
+                        ...item,
+                        failed_cod_record: { ...failedRec, is_validated: true }
+                    }
+                }
+                return item
+            }))
+            setFiltered(prevFiltered => prevFiltered.map(item => {
+                const failedRec = item.failed_cod_record || {}
+                if (item.order_id === orderId) {
+                    return {
+                        ...item,
+                        failed_cod_record: { ...failedRec, is_validated: true }
+                    }
+                }
+                return item
+            }))
+
+            const { error: updateError } = await supabase
+                .from('tiktok_failed_cod')
+                .update({ is_validated: true })
+                .eq('order_id', orderId)
+
+            if (updateError) throw updateError
+
+            alert('Retur berhasil divalidasi!');
+        } catch (err) {
+            console.error('Validate error:', err)
+            loadData()
+            alert('Gagal memvalidasi: ' + err.message)
         }
     }
 
@@ -280,17 +363,46 @@ export default function FailedCodPage() {
             }
 
             const existingKeys = new Set(existingRecords.map(record => record.order_id))
-            const firstDuplicate = uniqueData.find(item => existingKeys.has(item.order_id))
 
-            if (firstDuplicate) {
-                throw new Error(`Data ditolak! Ada data retur yang sudah masuk sebelumnya (Order ID: ${firstDuplicate.order_id}).`)
-            }
+            const toInsert = []
+            let countDuplikat = 0
 
+            uniqueData.forEach(item => {
+                if (existingKeys.has(item.order_id)) {
+                    countDuplikat++
+                } else {
+                    toInsert.push(item)
+                }
+            })
+
+            setImportStats({
+                berhasil: toInsert.length,
+                duplikat: countDuplikat
+            })
+            setPendingImportData(toInsert)
+            setShowConfirmModal(true)
+
+        } catch (err) {
+            console.error("Import error:", err)
+            setImportResult({ success: false, message: err.message })
+        } finally {
+            setImporting(false)
+            if (fileRef.current) fileRef.current.value = ''
+        }
+    }
+
+    const confirmImport = async () => {
+        setShowConfirmModal(false)
+        setImporting(true)
+        setError(null)
+        setImportResult(null)
+
+        try {
             // Upsert in batches to tiktok_failed_cod
             let inserted = 0
             const batchSize = 50
-            for (let i = 0; i < uniqueData.length; i += batchSize) {
-                const batch = uniqueData.slice(i, i + batchSize)
+            for (let i = 0; i < pendingImportData.length; i += batchSize) {
+                const batch = pendingImportData.slice(i, i + batchSize)
                 const { error } = await supabase
                     .from('tiktok_failed_cod')
                     .upsert(batch, { onConflict: 'order_id', ignoreDuplicates: false })
@@ -303,8 +415,9 @@ export default function FailedCodPage() {
             }
 
             // === CORE REQUIREMENT: Update the main tiktok_sales table's status to 'RTS'. ===
-            for (let i = 0; i < orderIdsToCheck.length; i += 100) {
-                const chunk = orderIdsToCheck.slice(i, i + 100)
+            const orderIdsToUpdate = pendingImportData.map(item => item.order_id)
+            for (let i = 0; i < orderIdsToUpdate.length; i += 100) {
+                const chunk = orderIdsToUpdate.slice(i, i + 100)
                 const { error: rtsError } = await supabase
                     .from('tiktok_sales')
                     .update({ order_status: 'RTS' })
@@ -315,15 +428,26 @@ export default function FailedCodPage() {
                 }
             }
 
-            setImportResult({ success: true, count: uniqueData.length })
+            setImportResult({
+                success: true,
+                berhasil: inserted,
+                duplikat: importStats.duplikat
+            })
             loadData()
         } catch (err) {
-            console.error("Import error:", err)
+            console.error("Confirm Import error:", err)
             setImportResult({ success: false, message: err.message })
         } finally {
             setImporting(false)
-            if (fileRef.current) fileRef.current.value = ''
+            setPendingImportData([])
+            setImportStats(null)
         }
+    }
+
+    const cancelImport = () => {
+        setShowConfirmModal(false)
+        setPendingImportData([])
+        setImportStats(null)
     }
 
     const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
@@ -366,12 +490,66 @@ export default function FailedCodPage() {
                 </div>
             )}
 
+            {showConfirmModal && importStats && (
+                <div className="modal-overlay">
+                    <div className="modal-content" style={{ maxWidth: '500px' }}>
+                        <div className="modal-header">
+                            <h2>Konfirmasi Import Data Retur</h2>
+                            <button className="btn-close" onClick={cancelImport}>×</button>
+                        </div>
+                        <div className="modal-body">
+                            <p>Berikut adalah hasil pengecekan file yang diunggah:</p>
+                            <ul style={{ margin: '16px 0', paddingLeft: '24px', lineHeight: '1.6' }}>
+                                <li>✅ Akan ditambahkan: <b>{importStats.berhasil}</b> data</li>
+                                <li>🔄 Duplikat (diabaikan): <b>{importStats.duplikat}</b> data</li>
+                            </ul>
+                            <p style={{ margin: '8px 0 0 0', fontSize: '13px' }}>*Catatan: Order di Penjualan yang sesuai akan otomatis menjadi RTS jika Anda melanjutkan proses ini.</p>
+                            <br />
+                            {importStats.berhasil > 0 ? (
+                                <p>Apakah Anda yakin ingin memproses data tersebut ke dalam sistem?</p>
+                            ) : (
+                                <p style={{ color: 'var(--text-danger)' }}>Tidak ada data baru yang bisa di-import.</p>
+                            )}
+                        </div>
+                        <div className="modal-footer" style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+                            <button className="btn btn-secondary" onClick={cancelImport}>Batal</button>
+                            {importStats.berhasil > 0 && (
+                                <button className="btn btn-primary" onClick={confirmImport}>Ya, Input Data</button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {importResult && (
-                <div className={`alert ${importResult.success ? 'alert-success' : 'alert-error'}`} style={{ marginBottom: '20px' }}>
-                    {importResult.success
-                        ? `✅ Berhasil import ${importResult.count} data retur dan mengupdate order terkait di tabel Penjualan menjadi RTS.`
-                        : `⚠️ Gagal import: ${importResult.message}`
-                    }
+                <div className="modal-overlay">
+                    <div className="modal-content" style={{ maxWidth: '500px', borderTop: importResult.success ? '4px solid var(--success)' : '4px solid var(--danger)' }}>
+                        <div className="modal-header">
+                            <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {importResult.success ? '✅ Import Berhasil' : '⚠️ Import Gagal'}
+                            </h2>
+                            <button className="btn-close" onClick={() => setImportResult(null)}>×</button>
+                        </div>
+                        <div className="modal-body" style={{ padding: '20px' }}>
+                            {importResult.success ? (
+                                <div>
+                                    <p style={{ marginBottom: '16px', fontSize: '15px' }}>Rekap data yang berhasil dikembalikan (RTS):</p>
+                                    <ul style={{ margin: '0 0 16px 20px', lineHeight: '1.6' }}>
+                                        <li>Berhasil ditambahkan: <b style={{ color: 'var(--success)' }}>{importResult.berhasil}</b> data</li>
+                                        <li>Duplikat (diabaikan): <b style={{ color: 'var(--text-muted)' }}>{importResult.duplikat}</b> data</li>
+                                    </ul>
+                                    <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                        *Order terkait di tabel Penjualan otomatis diupdate menjadi RTS.
+                                    </p>
+                                </div>
+                            ) : (
+                                <p style={{ color: 'var(--danger)' }}>{importResult.message}</p>
+                            )}
+                        </div>
+                        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+                            <button className="btn btn-primary" onClick={() => setImportResult(null)}>Tutup</button>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -545,13 +723,35 @@ export default function FailedCodPage() {
                                                         }}
                                                         value={failedRec.return_status || 'Diproses'}
                                                         onChange={(e) => handleStatusChange(item.order_id, e.target.value)}
+                                                        disabled={failedRec.is_validated}
                                                     >
                                                         <option value="Diproses">Diproses</option>
                                                         <option value="Diterima">Diterima</option>
                                                         <option value="Hilang">Hilang</option>
                                                     </select>
                                                 </div>
-                                                <div className="cell-sub" style={{ color: 'var(--text-danger)' }}>
+                                                {failedRec.is_validated ? (
+                                                    <div style={{ marginTop: '8px' }}><span style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '6px', backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', fontWeight: 500, display: 'inline-block' }}>Tervalidasi</span></div>
+                                                ) : (failedRec.return_status === 'Diterima' || failedRec.return_status === 'Hilang') ? (
+                                                    <div style={{ marginTop: '8px' }}>
+                                                        <button
+                                                            className="btn"
+                                                            style={{
+                                                                backgroundColor: '#3b82f6',
+                                                                color: 'white',
+                                                                padding: '4px 8px',
+                                                                fontSize: '11px',
+                                                                borderRadius: '4px',
+                                                                border: 'none',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                            onClick={() => handleValidate(item.order_id)}
+                                                        >
+                                                            Validasi ✓
+                                                        </button>
+                                                    </div>
+                                                ) : null}
+                                                <div className="cell-sub" style={{ color: 'var(--text-danger)', marginTop: '6px' }}>
                                                     {failedRec.return_reason}
                                                 </div>
                                                 {failedRec.return_time && (
@@ -640,7 +840,31 @@ export default function FailedCodPage() {
                                                     <option value="Diterima">Diterima</option>
                                                     <option value="Hilang">Hilang</option>
                                                 </select>
+                                                {failedRec.is_validated && (
+                                                    <div style={{ marginTop: '8px' }}><span style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '6px', backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', fontWeight: 500, display: 'inline-block' }}>Tervalidasi</span></div>
+                                                )}
                                             </div>
+                                            {(!failedRec.is_validated && (failedRec.return_status === 'Diterima' || failedRec.return_status === 'Hilang')) && (
+                                                <div className="data-card-row">
+                                                    <span className="data-card-label">Aksi</span>
+                                                    <button
+                                                        className="btn"
+                                                        style={{
+                                                            backgroundColor: '#3b82f6',
+                                                            color: 'white',
+                                                            padding: '6px 12px',
+                                                            fontSize: '12px',
+                                                            borderRadius: '4px',
+                                                            border: 'none',
+                                                            cursor: 'pointer',
+                                                            width: '100%'
+                                                        }}
+                                                        onClick={() => handleValidate(item.order_id)}
+                                                    >
+                                                        Validasi Mutasi ✓
+                                                    </button>
+                                                </div>
+                                            )}
                                             {failedRec.return_time && (
                                                 <div className="data-card-row">
                                                     <span className="data-card-label">Tgl Retur</span>

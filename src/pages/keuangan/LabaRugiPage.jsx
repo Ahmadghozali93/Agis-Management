@@ -5,6 +5,8 @@ export default function LabaRugiPage() {
     const [incomes, setIncomes] = useState([])
     const [expenses, setExpenses] = useState([])
     const [sales, setSales] = useState([])
+    const [outMutations, setOutMutations] = useState([])
+    const [allCoas, setAllCoas] = useState([])
     const [loading, setLoading] = useState(true)
     const [period, setPeriod] = useState('month')
 
@@ -16,6 +18,7 @@ export default function LabaRugiPage() {
             let incomeQuery = supabase.from('incomes').select('id, category, amount, date').order('date', { ascending: false })
             let expenseQuery = supabase.from('expenses').select('id, category, amount, date').order('date', { ascending: false })
             let salesQuery = supabase.from('tiktok_sales').select('id, total, settlement_date')
+            let mutQuery = supabase.from('stock_mutations').select('qty, hpp, date').eq('type', 'out')
 
             if (period !== 'all') {
                 const now = new Date()
@@ -29,13 +32,23 @@ export default function LabaRugiPage() {
                     incomeQuery = incomeQuery.gte('date', startDate)
                     expenseQuery = expenseQuery.gte('date', startDate)
                     salesQuery = salesQuery.gte('settlement_date', startDate)
+                    mutQuery = mutQuery.gte('date', startDate)
                 }
             }
 
-            const [{ data: inc }, { data: exp }, { data: sal }] = await Promise.all([incomeQuery, expenseQuery, salesQuery])
+            const [{ data: inc }, { data: exp }, { data: sal }, { data: mutRes }, { data: coaData }] = await Promise.all([
+                incomeQuery,
+                expenseQuery,
+                salesQuery,
+                mutQuery,
+                supabase.from('coa').select('code, name, type')
+            ])
+
             setIncomes(inc || [])
             setExpenses(exp || [])
             setSales(sal || [])
+            setOutMutations(mutRes || [])
+            setAllCoas(coaData || [])
         } catch (err) {
             console.error('Error:', err)
         } finally {
@@ -45,9 +58,31 @@ export default function LabaRugiPage() {
 
     function fmt(v) { return 'Rp ' + (v || 0).toLocaleString('id-ID') }
 
+    // Helper to get real COA type
+    function getCoaType(categoryLabel) {
+        if (!categoryLabel) return null
+        const found = allCoas.find(c => {
+            const label = c.code ? `[${c.code}] ${c.name}` : c.name
+            return label === categoryLabel || c.name === categoryLabel
+        })
+        return found ? found.type : null
+    }
+
+    // Filter to only include real Incomes (exclude liability, payable, equity)
+    const validIncomes = incomes.filter(i => {
+        const type = getCoaType(i.category)
+        return type !== 'liability' && type !== 'payable' && type !== 'equity' && type !== 'asset' && type !== 'fixed_asset' && type !== 'receivable'
+    })
+
+    // Filter to only include real Expenses (exclude liability, payable, equity)
+    const validExpenses = expenses.filter(e => {
+        const type = getCoaType(e.category)
+        return type !== 'liability' && type !== 'payable' && type !== 'equity' && type !== 'asset' && type !== 'fixed_asset' && type !== 'receivable'
+    })
+
     // Group incomes by category
     const incomeByCategory = {}
-    incomes.forEach(i => {
+    validIncomes.forEach(i => {
         const cat = i.category || 'Lainnya'
         if (!incomeByCategory[cat]) incomeByCategory[cat] = { total: 0, count: 0 }
         incomeByCategory[cat].total += i.amount || 0
@@ -56,7 +91,7 @@ export default function LabaRugiPage() {
 
     // Group expenses by category
     const expenseByCategory = {}
-    expenses.forEach(e => {
+    validExpenses.forEach(e => {
         const cat = e.category || 'Lainnya'
         if (!expenseByCategory[cat]) expenseByCategory[cat] = { total: 0, count: 0 }
         expenseByCategory[cat].total += e.amount || 0
@@ -66,9 +101,15 @@ export default function LabaRugiPage() {
     // Sales total
     const totalSales = sales.reduce((s, x) => s + (x.total || 0), 0)
 
-    const totalIncome = incomes.reduce((s, i) => s + (i.amount || 0), 0)
+    // HPP / COGS total
+    const totalHpp = outMutations.reduce((s, m) => s + (Number(m.qty || 0) * Number(m.hpp || 0)), 0)
+
+    const totalIncome = validIncomes.reduce((s, i) => s + (i.amount || 0), 0)
     const totalPendapatan = totalIncome + totalSales
-    const totalExpense = expenses.reduce((s, e) => s + (e.amount || 0), 0)
+
+    // Total expense includes explicit expenses AND computed HPP 
+    const explicitExpenses = validExpenses.reduce((s, e) => s + (e.amount || 0), 0)
+    const totalExpense = explicitExpenses + totalHpp
     const profit = totalPendapatan - totalExpense
 
     return (
@@ -114,13 +155,13 @@ export default function LabaRugiPage() {
                                 {totalSales > 0 && (
                                     <div style={{
                                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                        padding: '12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)'
+                                        padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: '13px'
                                     }}>
-                                        <span>
-                                            <span style={{ fontWeight: 600 }}>Penjualan TikTok</span>
-                                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '8px' }}>({sales.length} transaksi)</span>
+                                        <span style={{ flex: 1, minWidth: 0 }}>
+                                            <span style={{ fontWeight: 500 }}>Penjualan TikTok</span>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '8px' }}>({sales.length} trx)</span>
                                         </span>
-                                        <span style={{ fontWeight: 700, color: 'var(--success)' }}>{fmt(totalSales)}</span>
+                                        <span style={{ fontWeight: 600, color: 'var(--success)', whiteSpace: 'nowrap', textAlign: 'right', minWidth: '120px' }}>{fmt(totalSales)}</span>
                                     </div>
                                 )}
 
@@ -128,13 +169,13 @@ export default function LabaRugiPage() {
                                 {Object.entries(incomeByCategory).map(([cat, data]) => (
                                     <div key={cat} style={{
                                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                        padding: '12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)'
+                                        padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: '13px'
                                     }}>
-                                        <span>
-                                            <span style={{ fontWeight: 600 }}>{cat}</span>
-                                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '8px' }}>({data.count} transaksi)</span>
+                                        <span style={{ flex: 1, minWidth: 0 }}>
+                                            <span style={{ fontWeight: 500 }}>{cat}</span>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '8px' }}>({data.count} trx)</span>
                                         </span>
-                                        <span style={{ fontWeight: 700, color: 'var(--success)' }}>{fmt(data.total)}</span>
+                                        <span style={{ fontWeight: 600, color: 'var(--success)', whiteSpace: 'nowrap', textAlign: 'right', minWidth: '120px' }}>{fmt(data.total)}</span>
                                     </div>
                                 ))}
 
@@ -153,25 +194,38 @@ export default function LabaRugiPage() {
                             </div>
                         </div>
 
-                        {/* BEBAN */}
                         <div className="settings-section">
                             <h3 style={{ color: 'var(--danger)', marginBottom: '16px' }}>💸 Beban</h3>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
 
+                                {/* HPP */}
+                                {totalHpp > 0 && (
+                                    <div style={{
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                        padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: '13px'
+                                    }}>
+                                        <span style={{ flex: 1, minWidth: 0 }}>
+                                            <span style={{ fontWeight: 500 }}>Harga Pokok Penjualan (HPP)</span>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '8px' }}>({outMutations.length} trx)</span>
+                                        </span>
+                                        <span style={{ fontWeight: 600, color: 'var(--danger)', whiteSpace: 'nowrap', textAlign: 'right', minWidth: '120px' }}>{fmt(totalHpp)}</span>
+                                    </div>
+                                )}
+
                                 {Object.entries(expenseByCategory).map(([cat, data]) => (
                                     <div key={cat} style={{
                                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                        padding: '12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)'
+                                        padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: '13px'
                                     }}>
-                                        <span>
-                                            <span style={{ fontWeight: 600 }}>{cat}</span>
-                                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '8px' }}>({data.count} transaksi)</span>
+                                        <span style={{ flex: 1, minWidth: 0 }}>
+                                            <span style={{ fontWeight: 500 }}>{cat}</span>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '8px' }}>({data.count} trx)</span>
                                         </span>
-                                        <span style={{ fontWeight: 700, color: 'var(--danger)' }}>{fmt(data.total)}</span>
+                                        <span style={{ fontWeight: 600, color: 'var(--danger)', whiteSpace: 'nowrap', textAlign: 'right', minWidth: '120px' }}>{fmt(data.total)}</span>
                                     </div>
                                 ))}
 
-                                {Object.keys(expenseByCategory).length === 0 && (
+                                {Object.keys(expenseByCategory).length === 0 && totalHpp === 0 && (
                                     <p style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', padding: '16px' }}>Belum ada beban</p>
                                 )}
 

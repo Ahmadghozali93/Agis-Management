@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { getAverageHpp } from '../../lib/stockUtils'
 
 const STATUS_MAP = {
     'Diproses': { label: 'Diproses', cls: 'badge-warning', icon: '⏳', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
@@ -247,12 +248,75 @@ export default function ReturnPage() {
 
     const handleStatusChange = async (returnId, newStatus) => {
         try {
-            setData(prev => prev.map(item => item.id === returnId ? { ...item, status: newStatus } : item))
+            const item = data.find(d => d.id === returnId)
+            if (!item) return
+
+            if (item.is_validated) {
+                alert('Data ini sudah divalidasi dan tidak bisa diubah lagi.');
+                return;
+            }
+
+            const oldStatus = item.status || 'Diproses'
+            const orderId = item.order_id
+            const sr = item.sales_record || {}
+
+            // optimisitic
+            setData(prev => prev.map(d => d.id === returnId ? { ...d, status: newStatus } : d))
+            setFiltered(prev => prev.map(d => d.id === returnId ? { ...d, status: newStatus } : d))
+
+            if (oldStatus !== newStatus) {
+                const qty = parseInt(sr.quantity) || 0
+
+                // Cleanup old mutations
+                await supabase.from('stock_mutations').delete().like('description', `%Return: ${orderId}%`)
+
+                if (qty > 0 && (newStatus === 'Diterima' || newStatus === 'Hilang')) {
+                    const type = newStatus === 'Diterima' ? 'in' : 'out'
+                    const desc = `Retur ${newStatus} dari Return: ${orderId}`
+                    const skuToUse = sr.seller_sku
+                    const pName = sr.product_name
+
+                    const avgHpp = await getAverageHpp(skuToUse, pName)
+
+                    const { error: mutErr } = await supabase.from('stock_mutations').insert([{
+                        product_name: pName,
+                        sku: skuToUse,
+                        qty: qty,
+                        hpp: avgHpp,
+                        type: type,
+                        reference_id: orderId,
+                        description: desc,
+                        date: new Date().toISOString().substring(0, 10),
+                        created_at: new Date().toISOString()
+                    }])
+                    if (mutErr) throw mutErr
+                }
+            }
+
             const { error } = await supabase.from('tiktok_returns').update({ status: newStatus }).eq('id', returnId)
             if (error) throw error
         } catch (err) {
+            console.error('Update status error:', err)
+            loadData() // revert
             alert('Gagal update status barang: ' + err.message)
+        }
+    }
+
+    const handleValidate = async (returnId) => {
+        try {
+            if (!window.confirm('Validasi return ini? Setelah divalidasi, status dan stok tidak bisa diubah lagi.')) return;
+
+            setData(prev => prev.map(d => d.id === returnId ? { ...d, is_validated: true } : d))
+            setFiltered(prev => prev.map(d => d.id === returnId ? { ...d, is_validated: true } : d))
+
+            const { error } = await supabase.from('tiktok_returns').update({ is_validated: true }).eq('id', returnId)
+            if (error) throw error
+
+            alert('Return berhasil divalidasi!');
+        } catch (err) {
+            console.error('Validate error:', err)
             loadData()
+            alert('Gagal memvalidasi: ' + err.message)
         }
     }
 
@@ -436,7 +500,7 @@ export default function ReturnPage() {
                                                 <div className="cell-sub">{sr.variation || '-'} · {sr.quantity || 0} pcs</div>
                                             </td>
                                             <td>
-                                                <div style={{ marginBottom: '6px' }}>
+                                                <div style={{ marginBottom: '4px' }}>
                                                     <select
                                                         className="filter-select"
                                                         style={{
@@ -449,13 +513,27 @@ export default function ReturnPage() {
                                                         }}
                                                         value={item.status || 'Diproses'}
                                                         onChange={(e) => handleStatusChange(item.id, e.target.value)}
+                                                        disabled={item.is_validated}
                                                     >
                                                         <option value="Diproses">Diproses</option>
                                                         <option value="Diterima">Diterima</option>
                                                         <option value="Hilang">Hilang</option>
                                                     </select>
                                                 </div>
-                                                <div className="cell-sub" style={{ color: 'var(--text-danger)' }}>
+                                                {item.is_validated ? (
+                                                    <div style={{ marginTop: '4px' }}><span style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '6px', backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', fontWeight: 500, display: 'inline-block' }}>Tervalidasi</span></div>
+                                                ) : (item.status === 'Diterima' || item.status === 'Hilang') ? (
+                                                    <div style={{ marginTop: '4px' }}>
+                                                        <button
+                                                            className="btn"
+                                                            style={{ backgroundColor: '#3b82f6', color: 'white', padding: '4px 8px', fontSize: '11px', borderRadius: '4px', border: 'none', cursor: 'pointer' }}
+                                                            onClick={() => handleValidate(item.id)}
+                                                        >
+                                                            Validasi ✓
+                                                        </button>
+                                                    </div>
+                                                ) : null}
+                                                <div className="cell-sub" style={{ color: 'var(--text-danger)', marginTop: '4px' }}>
                                                     {item.reason}
                                                 </div>
                                             </td>
@@ -531,23 +609,39 @@ export default function ReturnPage() {
                                             </div>
                                             <div className="data-card-row">
                                                 <span className="data-card-label">Status Retur</span>
-                                                <select
-                                                    className="filter-select"
-                                                    style={{
-                                                        padding: '4px 8px', fontSize: '12px', borderRadius: '6px',
-                                                        backgroundColor: item.status === 'Hilang' ? 'rgba(239, 68, 68, 0.1)' :
-                                                            item.status === 'Diterima' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                                                        color: item.status === 'Hilang' ? '#ef4444' :
-                                                            item.status === 'Diterima' ? '#22c55e' : '#f59e0b',
-                                                        border: 'none', outline: 'none', cursor: 'pointer'
-                                                    }}
-                                                    value={item.status || 'Diproses'}
-                                                    onChange={(e) => handleStatusChange(item.id, e.target.value)}
-                                                >
-                                                    <option value="Diproses">Diproses</option>
-                                                    <option value="Diterima">Diterima</option>
-                                                    <option value="Hilang">Hilang</option>
-                                                </select>
+                                                <div>
+                                                    <select
+                                                        className="filter-select"
+                                                        style={{
+                                                            padding: '4px 8px', fontSize: '12px', borderRadius: '6px',
+                                                            backgroundColor: item.status === 'Hilang' ? 'rgba(239, 68, 68, 0.1)' :
+                                                                item.status === 'Diterima' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                                                            color: item.status === 'Hilang' ? '#ef4444' :
+                                                                item.status === 'Diterima' ? '#22c55e' : '#f59e0b',
+                                                            border: 'none', outline: 'none', cursor: 'pointer'
+                                                        }}
+                                                        value={item.status || 'Diproses'}
+                                                        onChange={(e) => handleStatusChange(item.id, e.target.value)}
+                                                        disabled={item.is_validated}
+                                                    >
+                                                        <option value="Diproses">Diproses</option>
+                                                        <option value="Diterima">Diterima</option>
+                                                        <option value="Hilang">Hilang</option>
+                                                    </select>
+                                                    {item.is_validated ? (
+                                                        <div style={{ marginTop: '6px' }}><span style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '6px', backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', fontWeight: 500, display: 'inline-block' }}>Tervalidasi</span></div>
+                                                    ) : (item.status === 'Diterima' || item.status === 'Hilang') ? (
+                                                        <div style={{ marginTop: '6px' }}>
+                                                            <button
+                                                                className="btn"
+                                                                style={{ backgroundColor: '#3b82f6', color: 'white', padding: '4px 8px', fontSize: '11px', borderRadius: '4px', border: 'none', cursor: 'pointer' }}
+                                                                onClick={() => handleValidate(item.id)}
+                                                            >
+                                                                Validasi ✓
+                                                            </button>
+                                                        </div>
+                                                    ) : null}
+                                                </div>
                                             </div>
                                             <div className="data-card-row">
                                                 <span className="data-card-label">Alasan</span>

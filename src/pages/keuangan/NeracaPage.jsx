@@ -5,7 +5,7 @@ export default function NeracaPage() {
     const [loading, setLoading] = useState(true)
     const [period, setPeriod] = useState('all')
 
-    // COA accounts
+    const [allCoas, setAllCoas] = useState([])
     const [asetCoas, setAsetCoas] = useState([])
     const [kewajibanCoas, setKewajibanCoas] = useState([])
     const [ekuitasCoas, setEkuitasCoas] = useState([])
@@ -14,8 +14,10 @@ export default function NeracaPage() {
     const [incomes, setIncomes] = useState([])
     const [expenses, setExpenses] = useState([])
     const [sales, setSales] = useState([])
+    const [outMutations, setOutMutations] = useState([])
     const [purchases, setPurchases] = useState([])
     const [payments, setPayments] = useState([])
+    const [transfers, setTransfers] = useState([])
 
     useEffect(() => { loadData() }, [period])
 
@@ -32,11 +34,13 @@ export default function NeracaPage() {
             }
 
             // Queries
-            let incQ = supabase.from('incomes').select('amount, payment_method, date')
+            let incQ = supabase.from('incomes').select('amount, payment_method, category, date')
             let expQ = supabase.from('expenses').select('amount, payment_method, category, date')
             let salQ = supabase.from('tiktok_sales').select('total, settlement_date')
             let purQ = supabase.from('purchases').select('total, status, date')
             let payQ = supabase.from('payments').select('amount, method, date')
+            let transQ = supabase.from('transfers').select('amount, from_account, to_account, date')
+            let mutQ = supabase.from('stock_mutations').select('qty, hpp, date').eq('type', 'out')
 
             if (dateFilter) {
                 incQ = incQ.gte('date', dateFilter)
@@ -44,23 +48,28 @@ export default function NeracaPage() {
                 salQ = salQ.gte('settlement_date', dateFilter)
                 purQ = purQ.gte('date', dateFilter)
                 payQ = payQ.gte('date', dateFilter)
+                transQ = transQ.gte('date', dateFilter)
+                mutQ = mutQ.gte('date', dateFilter)
             }
 
-            const [asetRes, kwRes, ekRes, incRes, expRes, salRes, purRes, payRes] = await Promise.all([
-                supabase.from('coa').select('id, code, name, type, account_group').in('type', ['asset', 'fixed_asset', 'receivable']).order('code'),
-                supabase.from('coa').select('id, code, name, type, account_group').in('type', ['liability', 'payable']).order('code'),
-                supabase.from('coa').select('id, code, name, type, account_group').eq('type', 'equity').order('code'),
-                incQ, expQ, salQ, purQ, payQ
+            const [allCoasRes, incRes, expRes, salRes, purRes, payRes, transRes, mutRes] = await Promise.all([
+                supabase.from('coa').select('id, code, name, type, account_group').order('code'),
+                incQ, expQ, salQ, purQ, payQ, transQ, mutQ
             ])
 
-            setAsetCoas(asetRes.data || [])
-            setKewajibanCoas(kwRes.data || [])
-            setEkuitasCoas(ekRes.data || [])
+            const coas = allCoasRes.data || []
+            setAllCoas(coas)
+            setAsetCoas(coas.filter(c => ['asset', 'fixed_asset', 'receivable'].includes(c.type)))
+            setKewajibanCoas(coas.filter(c => ['liability', 'payable'].includes(c.type)))
+            setEkuitasCoas(coas.filter(c => c.type === 'equity'))
+
             setIncomes(incRes.data || [])
             setExpenses(expRes.data || [])
             setSales(salRes.data || [])
             setPurchases(purRes.data || [])
             setPayments(payRes.data || [])
+            setTransfers(transRes.data || [])
+            setOutMutations(mutRes.data || [])
         } catch (err) {
             console.error('Error:', err)
         } finally {
@@ -70,38 +79,114 @@ export default function NeracaPage() {
 
     function fmt(v) { return 'Rp ' + (v || 0).toLocaleString('id-ID') }
 
+    const totalHpp = outMutations.reduce((s, m) => s + (Number(m.qty || 0) * Number(m.hpp || 0)), 0)
+
     // Calculate asset balances from transactions
     function getAssetBalance(coa) {
         const label = coa.code ? `[${coa.code}] ${coa.name}` : coa.name
+
+        // Helper to check if a method string matches this COA
+        const isMatch = (methodStr) => {
+            if (!methodStr) return false
+            // KeuanganTiktok/Pemasukan might append description: "[1010] Bank BCA - Tabungan"
+            return methodStr.startsWith(label) || methodStr.startsWith(coa.name)
+        }
+
         // Money IN = incomes where payment_method matches this asset
         const moneyIn = incomes
-            .filter(i => i.payment_method === label)
+            .filter(i => isMatch(i.payment_method))
             .reduce((s, i) => s + (i.amount || 0), 0)
+
         // Money OUT = expenses where payment_method matches this asset
         const moneyOut = expenses
-            .filter(e => e.payment_method === label)
+            .filter(e => isMatch(e.payment_method))
             .reduce((s, e) => s + (e.amount || 0), 0)
+
         // Payments (purchases paid from this account)
         const paidOut = payments
-            .filter(p => p.method === label)
+            .filter(p => isMatch(p.method))
             .reduce((s, p) => s + (p.amount || 0), 0)
-        return moneyIn - moneyOut - paidOut
+
+        // Transfer IN = `to_account` is this asset
+        const transferIn = transfers
+            .filter(t => isMatch(t.to_account))
+            .reduce((s, t) => s + (t.amount || 0), 0)
+
+        // Transfer OUT = `from_account` is this asset
+        const transferOut = transfers
+            .filter(t => isMatch(t.from_account))
+            .reduce((s, t) => s + (t.amount || 0), 0)
+
+        // Pembelian menambah aset Persediaan (Inventory), kecuali yang batal
+        let persediaanIn = 0
+        let persediaanOut = 0
+        if (coa.name.toLowerCase().includes('persediaan')) {
+            persediaanIn = purchases.filter(p => p.status !== 'batal').reduce((s, p) => s + (p.total || 0), 0)
+            persediaanOut = totalHpp
+        }
+
+        return moneyIn - moneyOut - paidOut + transferIn - transferOut + persediaanIn - persediaanOut
     }
 
-    // Kewajiban: unpaid purchases
-    const totalUtang = purchases
-        .filter(p => p.status === 'belum_lunas' || p.status === 'pending')
-        .reduce((s, p) => s + (p.total || 0), 0)
+    // Get real type of a category label
+    function getCoaType(categoryLabel) {
+        if (!categoryLabel) return null
+        const found = allCoas.find(c => {
+            const label = c.code ? `[${c.code}] ${c.name}` : c.name
+            return label === categoryLabel || c.name === categoryLabel
+        })
+        return found ? found.type : null
+    }
 
-    // Total calculations
+    // Kewajiban balance from Pemasukan & Pengeluaran
+    function getKewajibanBalance(coa) {
+        const label = coa.code ? `[${coa.code}] ${coa.name}` : coa.name
+        const moneyIn = incomes.filter(i => i.category === label || i.category === coa.name).reduce((s, i) => s + (i.amount || 0), 0)
+        const moneyOut = expenses.filter(e => e.category === label || e.category === coa.name).reduce((s, e) => s + (e.amount || 0), 0)
+
+        // Pembelian yang belum lunas otomatis masuk ke Utang Usaha
+        let utangPembelian = 0
+        if (coa.code === '2000' || coa.name.toLowerCase().includes('utang usaha')) {
+            const validPurchases = purchases.filter(p => p.status !== 'batal')
+            const totalP = validPurchases.reduce((s, p) => s + (p.total || 0), 0)
+            const totalPay = payments.reduce((s, p) => s + (p.amount || 0), 0)
+            utangPembelian = totalP - totalPay
+        }
+
+        return moneyIn - moneyOut + utangPembelian
+    }
+
+    // Ekuitas balance from Pemasukan & Pengeluaran
+    function getEkuitasBalance(coa) {
+        if (coa.name === 'Laba Ditahan') return labaDitahan // Handled separately
+        const label = coa.code ? `[${coa.code}] ${coa.name}` : coa.name
+        const moneyIn = incomes.filter(i => i.category === label || i.category === coa.name).reduce((s, i) => s + (i.amount || 0), 0)
+        const moneyOut = expenses.filter(e => e.category === label || e.category === coa.name).reduce((s, e) => s + (e.amount || 0), 0)
+        return moneyIn - moneyOut
+    }
+
+    // Sisa fitur: LabaDitahan, dll (dihapus perhitungan hardcoded utangPembelian)
+
+    // Total calculations (sum incomes/expenses. If COA type is not explicitly liability/equity/asset, treat as income/expense)
     const totalSales = sales.reduce((s, x) => s + (x.total || 0), 0)
-    const totalIncome = incomes.reduce((s, i) => s + (i.amount || 0), 0)
-    const totalExpense = expenses.reduce((s, e) => s + (e.amount || 0), 0)
-    const labaDitahan = totalIncome + totalSales - totalExpense
+
+    // For Pemasukan, we count it as income unless it's explicitly liability, equity, or asset
+    const totalIncome = incomes.filter(i => {
+        const type = getCoaType(i.category)
+        return type === 'income' || type === 'expense' || type === null
+    }).reduce((s, i) => s + (i.amount || 0), 0)
+
+    // For Pengeluaran, we count it as expense unless it's explicitly liability, equity, or asset
+    const totalExpense = expenses.filter(e => {
+        const type = getCoaType(e.category)
+        return type === 'income' || type === 'expense' || type === null
+    }).reduce((s, e) => s + (e.amount || 0), 0)
+
+    const labaDitahan = totalIncome + totalSales - (totalExpense + totalHpp)
 
     const totalAset = asetCoas.reduce((s, c) => s + getAssetBalance(c), 0)
-    const totalKewajiban = totalUtang
-    const totalEkuitas = labaDitahan
+    const totalKewajiban = kewajibanCoas.reduce((s, c) => s + getKewajibanBalance(c), 0)
+    const totalEkuitas = labaDitahan + ekuitasCoas.filter(c => c.name !== 'Laba Ditahan').reduce((s, c) => s + getEkuitasBalance(c), 0)
 
     const balance = totalAset - (totalKewajiban + totalEkuitas)
 
@@ -145,72 +230,77 @@ export default function NeracaPage() {
                     </div>
 
                     <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px', textAlign: 'center' }}>
-                        <strong>Total Aset = Total Kewajiban + Total Ekuitas</strong> — Data dihitung otomatis dari transaksi
+                        <strong>Total Aktiva (Aset) = Total Pasiva (Kewajiban + Ekuitas)</strong> — Data dihitung otomatis dari transaksi
                     </p>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                        {/* ASET */}
-                        <div className="settings-section">
-                            <h3 style={{ color: 'var(--success)', marginBottom: '12px', fontSize: '15px' }}>📥 Aset</h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                {asetCoas.map(coa => {
-                                    const bal = getAssetBalance(coa)
-                                    return (
-                                        <div key={coa.id} style={{
-                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                            padding: '8px 12px', borderRadius: 'var(--radius-sm)',
-                                            fontSize: '13px'
-                                        }}>
-                                            <span style={{ flex: 1, minWidth: 0 }}>
-                                                {coa.code && <code style={{ color: 'var(--primary)', marginRight: '10px', fontSize: '12px', fontWeight: 600, display: 'inline-block', width: '40px' }}>{coa.code}</code>}
-                                                <span style={{ fontWeight: 500 }}>{coa.name}</span>
-                                            </span>
-                                            <span style={{ fontWeight: 600, fontSize: '13px', color: bal >= 0 ? 'var(--success)' : 'var(--danger)', whiteSpace: 'nowrap', textAlign: 'right', minWidth: '120px' }}>{fmt(bal)}</span>
-                                        </div>
-                                    )
-                                })}
-                                {asetCoas.length === 0 && (
-                                    <p style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', padding: '16px' }}>
-                                        Belum ada akun Aset di COA
-                                    </p>
-                                )}
-                                <div style={{
-                                    display: 'flex', justifyContent: 'space-between',
-                                    padding: '10px 12px', borderTop: '2px solid var(--border-light)', fontWeight: 700, fontSize: '13px', marginTop: '4px'
-                                }}>
-                                    <span>Total Aset</span>
-                                    <span style={{ color: 'var(--success)', minWidth: '120px', textAlign: 'right' }}>{fmt(totalAset)}</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', alignItems: 'start' }}>
+                        {/* ASET (AKTIVA) */}
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '8px', borderBottom: '2px solid var(--border-color)' }}>
+                                <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, color: 'var(--text-primary)' }}>Aktiva</h2>
+                                <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, color: 'var(--success)' }}>{fmt(totalAset)}</h2>
+                            </div>
+                            <div className="settings-section">
+                                <h3 style={{ color: 'var(--success)', marginBottom: '12px', fontSize: '15px' }}>📥 Aset</h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    {asetCoas.map(coa => {
+                                        const bal = getAssetBalance(coa)
+                                        return (
+                                            <div key={coa.id} style={{
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+                                                fontSize: '13px'
+                                            }}>
+                                                <span style={{ flex: 1, minWidth: 0 }}>
+                                                    {coa.code && <code style={{ color: 'var(--primary)', marginRight: '10px', fontSize: '12px', fontWeight: 600, display: 'inline-block', width: '40px' }}>{coa.code}</code>}
+                                                    <span style={{ fontWeight: 500 }}>{coa.name}</span>
+                                                </span>
+                                                <span style={{ fontWeight: 600, fontSize: '13px', color: bal >= 0 ? 'var(--success)' : 'var(--danger)', whiteSpace: 'nowrap', textAlign: 'right', minWidth: '120px' }}>{fmt(bal)}</span>
+                                            </div>
+                                        )
+                                    })}
+                                    {asetCoas.length === 0 && (
+                                        <p style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', padding: '16px' }}>
+                                            Belum ada akun Aset di COA
+                                        </p>
+                                    )}
+                                    <div style={{
+                                        display: 'flex', justifyContent: 'space-between',
+                                        padding: '10px 12px', borderTop: '2px solid var(--border-light)', fontWeight: 700, fontSize: '13px', marginTop: '4px'
+                                    }}>
+                                        <span>Total Aset</span>
+                                        <span style={{ color: 'var(--success)', minWidth: '120px', textAlign: 'right' }}>{fmt(totalAset)}</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* KEWAJIBAN + EKUITAS */}
+                        {/* KEWAJIBAN + EKUITAS (PASIVA) */}
                         <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '8px', borderBottom: '2px solid var(--border-color)' }}>
+                                <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, color: 'var(--text-primary)' }}>Pasiva</h2>
+                                <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, color: 'var(--danger)' }}>{fmt(totalKewajiban + totalEkuitas)}</h2>
+                            </div>
                             {/* Kewajiban */}
                             <div className="settings-section" style={{ marginBottom: '20px' }}>
                                 <h3 style={{ color: 'var(--danger)', marginBottom: '12px', fontSize: '15px' }}>📤 Kewajiban</h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                    <div style={{
-                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                        padding: '8px 12px', borderRadius: 'var(--radius-sm)',
-                                        fontSize: '13px'
-                                    }}>
-                                        <span style={{ fontWeight: 500 }}>Utang Usaha (Pembelian Belum Lunas)</span>
-                                        <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--danger)', minWidth: '120px', textAlign: 'right' }}>{fmt(totalUtang)}</span>
-                                    </div>
-                                    {kewajibanCoas.map(coa => (
-                                        <div key={coa.id} style={{
-                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                            padding: '8px 12px', borderRadius: 'var(--radius-sm)',
-                                            fontSize: '13px'
-                                        }}>
-                                            <span style={{ flex: 1 }}>
-                                                {coa.code && <code style={{ color: 'var(--primary)', marginRight: '10px', fontSize: '12px', fontWeight: 600, display: 'inline-block', width: '40px' }}>{coa.code}</code>}
-                                                <span style={{ fontWeight: 500 }}>{coa.name}</span>
-                                            </span>
-                                            <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-muted)', minWidth: '120px', textAlign: 'right' }}>Rp 0</span>
-                                        </div>
-                                    ))}
+                                    {kewajibanCoas.map(coa => {
+                                        const bal = getKewajibanBalance(coa)
+                                        return (
+                                            <div key={coa.id} style={{
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+                                                fontSize: '13px'
+                                            }}>
+                                                <span style={{ flex: 1 }}>
+                                                    {coa.code && <code style={{ color: 'var(--primary)', marginRight: '10px', fontSize: '12px', fontWeight: 600, display: 'inline-block', width: '40px' }}>{coa.code}</code>}
+                                                    <span style={{ fontWeight: 500 }}>{coa.name}</span>
+                                                </span>
+                                                <span style={{ fontWeight: 600, fontSize: '13px', color: bal > 0 ? 'var(--danger)' : 'var(--text-muted)', minWidth: '120px', textAlign: 'right' }}>{fmt(bal)}</span>
+                                            </div>
+                                        )
+                                    })}
                                     <div style={{
                                         display: 'flex', justifyContent: 'space-between',
                                         padding: '10px 12px', borderTop: '2px solid var(--border-light)', fontWeight: 700, fontSize: '13px', marginTop: '4px'
@@ -225,17 +315,39 @@ export default function NeracaPage() {
                             <div className="settings-section">
                                 <h3 style={{ color: 'var(--primary)', marginBottom: '12px', fontSize: '15px' }}>🏛️ Ekuitas</h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                    <div style={{
-                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                        padding: '8px 12px', borderRadius: 'var(--radius-sm)',
-                                        fontSize: '13px'
-                                    }}>
-                                        <span>
-                                            <span style={{ fontWeight: 500 }}>Laba Ditahan</span>
-                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '6px' }}>(Pendapatan − Beban)</span>
-                                        </span>
-                                        <span style={{ fontWeight: 600, fontSize: '13px', color: labaDitahan >= 0 ? 'var(--success)' : 'var(--danger)', minWidth: '120px', textAlign: 'right' }}>{fmt(labaDitahan)}</span>
-                                    </div>
+                                    {ekuitasCoas.map(coa => {
+                                        if (coa.name === 'Laba Ditahan') {
+                                            return (
+                                                <div key={coa.id} style={{
+                                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                    padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+                                                    fontSize: '13px'
+                                                }}>
+                                                    <span>
+                                                        {coa.code && <code style={{ color: 'var(--primary)', marginRight: '10px', fontSize: '12px', fontWeight: 600, display: 'inline-block', width: '40px' }}>{coa.code}</code>}
+                                                        <span style={{ fontWeight: 500 }}>Laba Ditahan</span>
+                                                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '6px' }}>(Pendapatan − Beban)</span>
+                                                    </span>
+                                                    <span style={{ fontWeight: 600, fontSize: '13px', color: labaDitahan >= 0 ? 'var(--success)' : 'var(--danger)', minWidth: '120px', textAlign: 'right' }}>{fmt(labaDitahan)}</span>
+                                                </div>
+                                            )
+                                        }
+
+                                        const bal = getEkuitasBalance(coa)
+                                        return (
+                                            <div key={coa.id} style={{
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+                                                fontSize: '13px'
+                                            }}>
+                                                <span>
+                                                    {coa.code && <code style={{ color: 'var(--primary)', marginRight: '10px', fontSize: '12px', fontWeight: 600, display: 'inline-block', width: '40px' }}>{coa.code}</code>}
+                                                    <span style={{ fontWeight: 500 }}>{coa.name}</span>
+                                                </span>
+                                                <span style={{ fontWeight: 600, fontSize: '13px', color: bal >= 0 ? 'var(--success)' : 'var(--danger)', minWidth: '120px', textAlign: 'right' }}>{fmt(bal)}</span>
+                                            </div>
+                                        )
+                                    })}
                                     <div style={{
                                         display: 'flex', justifyContent: 'space-between',
                                         padding: '10px 12px', borderTop: '2px solid var(--border-light)', fontWeight: 700, fontSize: '13px', marginTop: '4px'

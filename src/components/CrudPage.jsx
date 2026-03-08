@@ -10,7 +10,8 @@ export default function CrudPage({
     defaultSort = 'created_at',
     extraFilters = null,
     onValidate = null,
-    onFormChange = null
+    onFormChange = null,
+    onDelete = null
 }) {
     const [data, setData] = useState([])
     const [loading, setLoading] = useState(true)
@@ -95,6 +96,10 @@ export default function CrudPage({
     async function handleDelete(id) {
         if (!confirm('Yakin ingin menghapus data ini?')) return
         try {
+            if (onDelete) {
+                const itemToDelete = data.find(d => d.id === id)
+                await onDelete(itemToDelete)
+            }
             const { error } = await supabase.from(tableName).delete().eq('id', id)
             if (error) throw error
             loadData()

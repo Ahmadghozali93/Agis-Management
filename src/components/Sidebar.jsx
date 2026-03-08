@@ -28,9 +28,9 @@ const menuItems = [
         roles: ['admin', 'owner', 'spv', 'host'],
         children: [
             { key: 'penjualan-tt', label: 'Penjualan', path: '/tiktok/penjualan' },
-            { key: 'keuangan-tt', label: 'Keuangan', path: '/tiktok/keuangan' },
+            { key: 'failed-cod', label: 'Failed COD', path: '/tiktok/failed-cod' },
             { key: 'return', label: 'Return', path: '/tiktok/return' },
-            { key: 'failed-cod', label: 'Failed COD', path: '/tiktok/failed-cod' }
+            { key: 'keuangan-tt', label: 'Keuangan', path: '/tiktok/keuangan' }
         ]
     },
     {
@@ -72,6 +72,7 @@ const menuItems = [
             { key: 'pembayaran', label: 'Pembayaran', path: '/keuangan/pembayaran' },
             { key: 'pemasukan', label: 'Pemasukan', path: '/keuangan/pemasukan' },
             { key: 'pengeluaran', label: 'Pengeluaran', path: '/keuangan/pengeluaran' },
+            { key: 'pindah-buku', label: 'Pindah Buku', path: '/keuangan/pindah-buku' },
             { key: 'laba-rugi', label: 'Laba Rugi', path: '/keuangan/laba-rugi' },
             { key: 'neraca', label: 'Neraca', path: '/keuangan/neraca' }
         ]

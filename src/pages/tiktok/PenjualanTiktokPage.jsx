@@ -18,7 +18,7 @@ const STATUS_MAP = {
     'Dibatalkan': { label: 'Dibatalkan', cls: 'badge-danger', icon: '❌', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' },
     'To ship': { label: 'Siap Kirim', cls: 'badge-warning', icon: '📦', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
     'Menunggu Pengepakan': { label: 'Siap Kirim', cls: 'badge-warning', icon: '📦', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
-    'RTS': { label: 'RTS (Gagal)', cls: 'badge-danger', icon: '❌', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' },
+    'RTS': { label: 'RTS', cls: 'badge-danger', icon: '❌', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' },
     'Return': { label: 'Return', cls: 'badge-warning', icon: '🔄', color: '#f97316', bg: 'rgba(249, 115, 22, 0.1)' },
     'Retur': { label: 'Return', cls: 'badge-warning', icon: '🔄', color: '#f97316', bg: 'rgba(249, 115, 22, 0.1)' }
 }
@@ -57,6 +57,10 @@ export default function PenjualanTiktokPage() {
 
     const [importing, setImporting] = useState(false)
     const [importResult, setImportResult] = useState(null)
+    const [showConfirmModal, setShowConfirmModal] = useState(false)
+    const [importStats, setImportStats] = useState(null)
+    const [pendingImportData, setPendingImportData] = useState([])
+    const [error, setError] = useState(null)
     const [statusFilter, setStatusFilter] = useState('all')
     const [tokoFilter, setTokoFilter] = useState('all')
     const fileRef = useRef(null)
@@ -244,23 +248,22 @@ export default function PenjualanTiktokPage() {
             if (uniqueData.length === 0) throw new Error('Tidak ada data valid untuk di-import')
 
             // === SKU Validation Check ===
-            const unknownSkus = new Set()
+            const validData = []
+            let countGagal = 0
+            const missingSkus = new Set()
+
             uniqueData.forEach(item => {
-                // If it has a seller_sku but it's not in our map, flag it
                 if (item.seller_sku && !productMap[item.seller_sku]) {
-                    unknownSkus.add(item.seller_sku)
+                    countGagal++
+                    missingSkus.add(item.seller_sku)
+                } else {
+                    validData.push(item)
                 }
             })
-
-            if (unknownSkus.size > 0) {
-                const missing = Array.from(unknownSkus).join(', ')
-                throw new Error(`Import dibatalkan! Terdapat SKU yang belum terdaftar di Master Produk: ${missing}`)
-            }
             // === End SKU Validation Check ===
 
             // === Duplicate Validation Check ===
-            // Extract all order_id to query the database efficiently
-            const orderIdsToCheck = uniqueData.map(item => item.order_id)
+            const orderIdsToCheck = validData.map(item => item.order_id)
 
             // Check in chunks of 100 since URLs can get long if there are many orders
             let existingRecords = []
@@ -283,19 +286,49 @@ export default function PenjualanTiktokPage() {
             // Create a set of existing keys for fast lookup
             const existingKeys = new Set(existingRecords.map(record => `${record.order_id}__${record.seller_sku}`))
 
-            // Find the first duplicate in the imported data
-            const firstDuplicate = uniqueData.find(item => existingKeys.has(`${item.order_id}__${item.seller_sku}`))
+            const toInsert = []
+            let countDuplikat = 0
 
-            if (firstDuplicate) {
-                throw new Error(`Data ditolak! Ada data ganda yang sudah masuk sebelumnya (Order ID: ${firstDuplicate.order_id}, SKU: ${firstDuplicate.seller_sku}).`)
-            }
+            validData.forEach(item => {
+                if (existingKeys.has(`${item.order_id}__${item.seller_sku}`)) {
+                    countDuplikat++
+                } else {
+                    toInsert.push(item)
+                }
+            })
             // === End Duplicate Validation ===
 
+            // Instead of upserting right away, show confirmation modal
+            setImportStats({
+                berhasil: toInsert.length,
+                gagal: countGagal,
+                duplikat: countDuplikat,
+                missingSkus: Array.from(missingSkus)
+            })
+            setPendingImportData(toInsert)
+            setShowConfirmModal(true)
+
+        } catch (err) {
+            console.error("Import error:", err)
+            setImportResult({ success: false, message: err.message })
+        } finally {
+            setImporting(false)
+            if (fileRef.current) fileRef.current.value = ''
+        }
+    }
+
+    const confirmImport = async () => {
+        setShowConfirmModal(false)
+        setImporting(true)
+        setError(null)
+        setImportResult(null)
+
+        try {
             // Upsert in batches
             let inserted = 0
             const batchSize = 50
-            for (let i = 0; i < uniqueData.length; i += batchSize) {
-                const batch = uniqueData.slice(i, i + batchSize)
+            for (let i = 0; i < pendingImportData.length; i += batchSize) {
+                const batch = pendingImportData.slice(i, i + batchSize)
                 const { error } = await supabase
                     .from('tiktok_sales')
                     .upsert(batch, { onConflict: 'order_id,seller_sku', ignoreDuplicates: false })
@@ -307,15 +340,28 @@ export default function PenjualanTiktokPage() {
                 console.log(`Upserted batch ${i / batchSize + 1}, total inserted so far: ${inserted}`)
             }
 
-            setImportResult({ success: true, count: uniqueData.length })
+            setImportResult({
+                success: true,
+                berhasil: inserted,
+                gagal: importStats.gagal,
+                duplikat: importStats.duplikat,
+                missingSkus: importStats.missingSkus
+            })
             loadData()
         } catch (err) {
-            console.error("Import error:", err)
+            console.error("Confirm Import error:", err)
             setImportResult({ success: false, message: err.message })
         } finally {
             setImporting(false)
-            if (fileRef.current) fileRef.current.value = ''
+            setPendingImportData([])
+            setImportStats(null)
         }
+    }
+
+    const cancelImport = () => {
+        setShowConfirmModal(false)
+        setPendingImportData([])
+        setImportStats(null)
     }
 
     // Compute unique statuses and their counts based on the CURRENT filtered data (respecting date/search/toko, ignoring status filter)
@@ -381,12 +427,58 @@ export default function PenjualanTiktokPage() {
                 </div>
             </div>
 
+            {showConfirmModal && importStats && (
+                <div className="modal-overlay">
+                    <div className="modal-content" style={{ maxWidth: '500px' }}>
+                        <div className="modal-header">
+                            <h2>Konfirmasi Import Data</h2>
+                            <button className="btn-close" onClick={cancelImport}>×</button>
+                        </div>
+                        <div className="modal-body">
+                            <p>Berikut adalah hasil pengecekan file yang diunggah:</p>
+                            <ul style={{ margin: '16px 0', paddingLeft: '24px', lineHeight: '1.6' }}>
+                                <li>✅ Akan ditambahkan: <b>{importStats.berhasil}</b> data</li>
+                                <li>🔄 Duplikat (diabaikan): <b>{importStats.duplikat}</b> data</li>
+                                <li>⚠️ Gagal (SKU Tidak Dikenal): <b>{importStats.gagal}</b> data</li>
+                            </ul>
+                            {importStats.missingSkus && importStats.missingSkus.length > 0 && (
+                                <div style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', marginBottom: '16px' }}>
+                                    <p style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: 600, color: 'var(--text-danger)' }}>SKU yang belum terdaftar di Master Produk (Gagal):</p>
+                                    <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>{importStats.missingSkus.join(', ')}</p>
+                                </div>
+                            )}
+                            {importStats.berhasil > 0 ? (
+                                <p>Apakah Anda yakin ingin memproses data tersebut ke dalam sistem?</p>
+                            ) : (
+                                <p style={{ color: 'var(--text-danger)' }}>Tidak ada data baru yang bisa di-import.</p>
+                            )}
+                        </div>
+                        <div className="modal-footer" style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+                            <button className="btn btn-secondary" onClick={cancelImport}>Batal</button>
+                            {importStats.berhasil > 0 && (
+                                <button className="btn btn-primary" onClick={confirmImport}>Ya, Input Data</button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {importResult && (
                 <div className={`alert ${importResult.success ? 'alert-success' : 'alert-error'}`} style={{ marginBottom: '20px' }}>
-                    {importResult.success
-                        ? `✅ Berhasil import ${importResult.count} data`
-                        : `⚠️ Gagal import: ${importResult.message}`
-                    }
+                    {importResult.success ? (
+                        <div>
+                            <strong>✅ Import Selesai:</strong>
+                            <ul style={{ margin: '8px 0 0 20px' }}>
+                                <li>Berhasil: <b>{importResult.berhasil}</b> data</li>
+                                <li>Duplikat: <b>{importResult.duplikat}</b> data</li>
+                                {importResult.gagal > 0 && (
+                                    <li>Gagal (SKU Tidak Dikenal): <b>{importResult.gagal}</b> data</li>
+                                )}
+                            </ul>
+                        </div>
+                    ) : (
+                        `⚠️ Gagal import: ${importResult.message}`
+                    )}
                 </div>
             )}
 

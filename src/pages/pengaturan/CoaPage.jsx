@@ -12,7 +12,7 @@ const ACCOUNT_TYPES = [
     { value: 'expense', label: 'Expense', group: 'Beban', color: 'badge-secondary' }
 ]
 
-const ACCOUNT_GROUPS = ['Kas/Bank', 'Aset Lancar', 'Aset Tetap', 'Kewajiban Lancar', 'Kewajiban Jangka Panjang', 'Ekuitas', 'Pendapatan', 'Beban']
+const ACCOUNT_GROUPS = ['Kas/Bank', 'Aset Lancar', 'Aset Tetap', 'Kewajiban Lancar', 'Kewajiban Jangka Panjang', 'Ekuitas', 'Pendapatan', 'HPP', 'Beban']
 
 function getTypeBadge(type) {
     const t = ACCOUNT_TYPES.find(a => a.value === type)
@@ -110,8 +110,41 @@ export default function CoaPage() {
     async function handleDelete(id) {
         if (!confirm('Yakin ingin menghapus akun ini?')) return
         try {
-            const { error } = await supabase.from('coa').delete().eq('id', id)
-            if (error) throw error
+            // Fetch COA details first to know its labels
+            const { data: coa, error: fetchErr } = await supabase.from('coa').select('*').eq('id', id).single()
+            if (fetchErr) throw fetchErr
+
+            // Build possible format variations used in transactions
+            const formats = [coa.name]
+            if (coa.code) formats.push(`[${coa.code}] ${coa.name}`)
+            if (coa.code && coa.description) formats.push(`[${coa.code}] ${coa.name} - ${coa.description}`)
+
+            // Check usage in all transaction tables
+            const [
+                { count: incCat }, { count: incPay },
+                { count: expCat }, { count: expPay },
+                { count: tfFrom }, { count: tfTo },
+                { count: payMeth }
+            ] = await Promise.all([
+                supabase.from('incomes').select('*', { count: 'exact', head: true }).in('category', formats),
+                supabase.from('incomes').select('*', { count: 'exact', head: true }).in('payment_method', formats),
+                supabase.from('expenses').select('*', { count: 'exact', head: true }).in('category', formats),
+                supabase.from('expenses').select('*', { count: 'exact', head: true }).in('payment_method', formats),
+                supabase.from('transfers').select('*', { count: 'exact', head: true }).in('from_account', formats),
+                supabase.from('transfers').select('*', { count: 'exact', head: true }).in('to_account', formats),
+                supabase.from('payments').select('*', { count: 'exact', head: true }).in('method', formats)
+            ])
+
+            const totalUsed = (incCat || 0) + (incPay || 0) + (expCat || 0) + (expPay || 0) + (tfFrom || 0) + (tfTo || 0) + (payMeth || 0)
+
+            if (totalUsed > 0) {
+                alert(`Gagal menghapus! COA dipakai pada ${totalUsed} entri transaksi. Anda harus mengubah transaksi tersebut lebih dulu jika ingin menghapus COA ini.`)
+                return
+            }
+
+            const { error: delErr } = await supabase.from('coa').delete().eq('id', id)
+            if (delErr) throw delErr
+
             loadCoas()
         } catch (err) {
             alert('Gagal menghapus: ' + err.message)

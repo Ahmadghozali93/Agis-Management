@@ -9,7 +9,7 @@ export default function PengeluaranPage() {
     useEffect(() => {
         async function loadOptions() {
             const [expRes, payRes] = await Promise.all([
-                supabase.from('coa').select('id, code, name').eq('type', 'expense').order('code').order('name'),
+                supabase.from('coa').select('id, code, name').in('type', ['expense', 'liability', 'payable', 'equity']).order('code').order('name'),
                 supabase.from('coa').select('id, code, name, description').eq('account_group', 'Kas/Bank').order('code').order('name')
             ])
             if (expRes.data) setExpenseAccounts(expRes.data)

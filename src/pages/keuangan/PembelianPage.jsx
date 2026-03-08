@@ -169,10 +169,9 @@ export default function PembelianPage() {
 
             // --- STOCK & EXPENSE SYNC LOGIC ---
             if (status === 'lunas' && oldStatus !== 'lunas') {
-                await syncToStock(items, 'in', `Pembelian dari ${supplierName}`)
-                await syncToExpense(payload)
+                await syncToStock(items, 'in', `Pembelian dari ${supplierName}`, purchaseNo)
             } else if (status === 'batal' && oldStatus === 'lunas') {
-                await syncToStock(oldItems, 'out', `Pembatalan Pembelian dari ${supplierName}`)
+                await syncToStock(oldItems, 'out', `Batal Pembelian dari ${supplierName}`, purchaseNo)
             }
 
             setShowForm(false)
@@ -182,11 +181,11 @@ export default function PembelianPage() {
         }
     }
 
-    const handleDelete = async (id, currentStatus, currentItems) => {
+    const handleDelete = async (id, currentStatus, currentItems, currentPurchaseNo) => {
         if (!confirm("Yakin ingin menghapus pembelian ini?")) return
         try {
             if (currentStatus === 'lunas') {
-                await syncToStock(currentItems, 'out', `Penghapusan Pembelian (revert)`)
+                await syncToStock(currentItems, 'out', `Hapus Pembelian`, currentPurchaseNo)
             }
             const { error } = await supabase.from('purchases').delete().eq('id', id)
             if (error) throw error
@@ -196,7 +195,7 @@ export default function PembelianPage() {
         }
     }
 
-    async function syncToStock(itemsArray, type, reason) {
+    async function syncToStock(itemsArray, type, reason, purchaseNoStr) {
         if (!itemsArray || itemsArray.length === 0) return
 
         const mutasiPayload = itemsArray.map(item => ({
@@ -204,6 +203,8 @@ export default function PembelianPage() {
             sku: item.sku,
             type: type,
             qty: item.qty,
+            hpp: (Number(item.qty) > 0) ? (Number(item.subtotal) / Number(item.qty)) : 0,
+            reference_id: purchaseNoStr,
             note: reason,
             date: new Date().toISOString()
         }))
@@ -219,14 +220,6 @@ export default function PembelianPage() {
         }
     }
 
-    async function syncToExpense({ supplier_name, total, date }) {
-        await supabase.from('expenses').insert([{
-            category: 'Pembelian Barang',
-            description: `Pembelian stok dari supplier ${supplier_name}`,
-            amount: total,
-            date: date
-        }])
-    }
 
     const getStatusBadge = (s) => {
         if (s === 'lunas') return <span className="badge badge-success">Lunas</span>
@@ -245,7 +238,7 @@ export default function PembelianPage() {
             const { error } = await supabase.from('purchases').update({ status: 'pending' }).eq('id', p.id)
             if (error) throw error
 
-            await syncToStock(p.items || [], 'in', `Pembelian dari ${p.supplier_name} (${p.purchase_no || ''})`)
+            await syncToStock(p.items || [], 'in', `Pembelian dari ${p.supplier_name}`, p.purchase_no)
             // Hilangkan syncToExpense dari sini, karena expense baru dicatat saat dibayar rill di menu Pembayaran.
 
             loadData()

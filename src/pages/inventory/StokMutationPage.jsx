@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { getAverageHpp } from '../../lib/stockUtils'
 
 function fmtDate(d) {
     if (!d) return '-'
@@ -23,6 +24,7 @@ export default function StokMutationPage() {
     const [type, setType] = useState('in')
     const [qty, setQty] = useState('')
     const [hpp, setHpp] = useState('')
+    const [referenceId, setReferenceId] = useState('')
     const [note, setNote] = useState('')
     const [date, setDate] = useState(new Date().toISOString().substring(0, 10))
 
@@ -65,6 +67,7 @@ export default function StokMutationPage() {
         setType('in')
         setQty('')
         setHpp('')
+        setReferenceId('')
         setNote('')
         setDate(new Date().toISOString().substring(0, 10))
         setShowForm(true)
@@ -74,12 +77,18 @@ export default function StokMutationPage() {
         e.preventDefault()
         setError(null)
         try {
+            let finalHpp = type === 'in' ? (Number(hpp) || 0) : null
+            if (!finalHpp) {
+                finalHpp = await getAverageHpp(productSku, productName)
+            }
+
             const payload = {
                 product_name: productName,
                 sku: productSku,
                 type,
                 qty: Number(qty),
-                hpp: type === 'in' ? (Number(hpp) || 0) : null,
+                hpp: finalHpp,
+                reference_id: referenceId,
                 note,
                 date
             }
@@ -160,7 +169,11 @@ export default function StokMutationPage() {
                             )}
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+                            <div className="form-group">
+                                <label>ID / No. Order</label>
+                                <input type="text" className="form-input" value={referenceId} onChange={e => setReferenceId(e.target.value)} placeholder="Misal: INV-001" />
+                            </div>
                             <div className="form-group">
                                 <label>Catatan</label>
                                 <input type="text" className="form-input" value={note} onChange={e => setNote(e.target.value)} placeholder="Alasan mutasi..." />
@@ -185,6 +198,7 @@ export default function StokMutationPage() {
                                 <tr>
                                     <th style={{ padding: '16px', textAlign: 'left' }}>Tanggal</th>
                                     <th style={{ padding: '16px', textAlign: 'left' }}>Produk</th>
+                                    <th style={{ padding: '16px', textAlign: 'left' }}>Ref ID</th>
                                     <th style={{ padding: '16px', textAlign: 'center' }}>Tipe</th>
                                     <th style={{ padding: '16px', textAlign: 'center' }}>Jumlah</th>
                                     <th style={{ padding: '16px', textAlign: 'right' }}>HPP/Unit</th>
@@ -204,14 +218,15 @@ export default function StokMutationPage() {
                                                 {m.product_name}
                                                 {m.sku && <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{m.sku}</div>}
                                             </td>
+                                            <td style={{ padding: '16px', fontSize: '12px', fontFamily: 'monospace' }}>{m.reference_id || '-'}</td>
                                             <td style={{ padding: '16px', textAlign: 'center' }}>
                                                 <span className={`badge ${m.type === 'in' ? 'badge-success' : 'badge-danger'}`}>
                                                     {m.type === 'in' ? 'Masuk' : 'Keluar'}
                                                 </span>
                                             </td>
                                             <td style={{ padding: '16px', textAlign: 'center', fontWeight: 'bold' }}>{m.qty}</td>
-                                            <td style={{ padding: '16px', textAlign: 'right', color: m.type === 'in' ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                                                {m.type === 'in' && m.hpp ? fmtCurrency(m.hpp) : '-'}
+                                            <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-primary)' }}>
+                                                {m.hpp ? fmtCurrency(m.hpp) : '-'}
                                             </td>
                                             <td style={{ padding: '16px' }}>{m.note || '-'}</td>
                                         </tr>

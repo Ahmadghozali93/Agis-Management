@@ -14,24 +14,19 @@ export default function StokOverviewPage() {
 
     async function loadProducts() {
         try {
-            const [prodRes, mutRes, purRes, fcRes, retRes, salesRes, shippedRes] = await Promise.all([
+            const [prodRes, mutRes, purRes, fcRes, retRes, salesRes] = await Promise.all([
                 supabase.from('products').select('*').order('name'),
                 supabase.from('stock_mutations').select('product_name, sku, type, qty'),
                 supabase.from('purchases').select('items, status').neq('status', 'batal'),
                 supabase.from('tiktok_failed_cod').select('order_id, return_status'),
                 supabase.from('tiktok_returns').select('order_id, status'),
-                supabase.from('tiktok_sales')
-                    .select('order_id, order_status, product_name, seller_sku, quantity')
-                    .or('order_status.ilike.%RTS%,order_status.ilike.%Failed%,order_status.ilike.%Gagal%,order_status.ilike.%Return%,order_status.ilike.%Retur%'),
-                supabase.from('tiktok_sales')
-                    .select('product_name, seller_sku, quantity, order_status')
-                    .or('order_status.ilike.%Dikirim%,order_status.ilike.%Shipping%,order_status.ilike.%In Transit%,order_status.ilike.%Shipped%,order_status.ilike.%Dalam Pengiriman%')
+                supabase.from('tiktok_sales').select('order_id, order_status, product_name, seller_sku, quantity')
             ])
             if (prodRes.error) throw prodRes.error
             if (mutRes.error) throw mutRes.error
 
             const mutations = mutRes.data || []
-            const shippedSales = shippedRes?.data || []
+            const sales = salesRes.data || []
 
             // Extract all purchased items for HPP calculation
             const allPurchasedItems = []
@@ -51,26 +46,79 @@ export default function StokOverviewPage() {
             const retMap = new Map()
                 ; (retRes?.data || []).forEach(r => retMap.set(r.order_id, (r.status || '').toLowerCase()))
 
-            const isDone = s => ['selesai', 'completed', 'done', 'selesai otomatis'].includes(s)
+            const isResolutionDone = s => ['selesai', 'completed', 'done', 'selesai otomatis'].includes(s)
 
-            const activeReturnSales = (salesRes?.data || []).filter(s => {
-                const fcStatus = fcMap.get(s.order_id)
-                const retStatus = retMap.get(s.order_id)
-                if (fcStatus && isDone(fcStatus)) return false
-                if (retStatus && isDone(retStatus)) return false
-                return true
-            })
+            const isCompleted = os => ['completed', 'delivered', 'done', 'selesai', 'selesai otomatis'].includes((os || '').toLowerCase())
+            const isFailedCod = os => {
+                const lower = (os || '').toLowerCase()
+                return lower === 'rts' || lower === 'failed cod' || lower.includes('gagal') || lower === 'delivery failed'
+            }
+            const isReturn = os => {
+                const lower = (os || '').toLowerCase()
+                return lower === 'return' || lower === 'retur' || lower === 'returned'
+            }
+            const isBatal = os => {
+                const lower = (os || '').toLowerCase()
+                return lower === 'batal' || lower === 'cancelled' || lower === 'canceled' || lower === 'unpaid' || lower === 'belum dibayar' || lower === 'awaiting payment'
+            }
 
             const computedProducts = (prodRes.data || []).map(p => {
-                // Calculate dynamic stock
+                // 1. Total Raw Mutations
                 const prodMutations = mutations.filter(m => m.sku ? m.sku === p.sku : m.product_name === p.name)
-                const computedStock = prodMutations.reduce((sum, m) => {
+                const totalMutasi = prodMutations.reduce((sum, m) => {
                     const q = Number(m.qty) || 0
                     return m.type === 'in' ? sum + q : sum - q
                 }, 0)
 
-                // Calculate HPP: (HPP produk + HPP rata2 pembelian) / 2
-                const baseHpp = p.hpp || 0
+                // 2. Tally Sales
+                const prodSales = sales.filter(s => s.seller_sku ? s.seller_sku === p.sku : s.product_name === p.name)
+
+                let dikirimQty = 0
+                let rtsProsesQty = 0
+                let completedQty = 0
+
+                prodSales.forEach(s => {
+                    if (isBatal(s.order_status)) return // Ignored completely, stock never moved
+
+                    const qty = Number(s.quantity) || 0
+                    const isFC = isFailedCod(s.order_status)
+                    const isRet = isReturn(s.order_status)
+
+                    if (isFC) {
+                        const rStatus = (fcMap.get(s.order_id) || 'diproses').toLowerCase()
+                        if (rStatus === 'diproses') {
+                            rtsProsesQty += qty // processing RTS
+                        } else if (rStatus === 'diterima') {
+                            completedQty += qty // Sale acts as a fixed negative deduction to balance the explicit 'in' mutation
+                        } else if (rStatus === 'hilang') {
+                            // Sale completely ignored (0 deduction), letting explicit 'out' mutation control the deduction alone
+                        } else if (isCompleted(s.order_status)) {
+                            completedQty += qty
+                        }
+                    } else if (isRet) {
+                        const rStatus = (retMap.get(s.order_id) || 'diproses').toLowerCase()
+                        if (rStatus === 'diproses') {
+                            rtsProsesQty += qty // in transit back to warehouse
+                        } else if (rStatus === 'diterima') {
+                            completedQty += qty // balances the explicit 'in' mutation
+                        } else if (rStatus === 'hilang') {
+                            // ignored — explicit 'out' mutation controls deduction
+                        }
+                    } else if (isCompleted(s.order_status)) {
+                        completedQty += qty // Order completely sold
+                    } else {
+                        dikirimQty += qty // Processing, To Ship, Shipped, In Transit (active orders)
+                    }
+                })
+
+                // 3. Current physical inventory in warehouse
+                const stokGudang = totalMutasi - completedQty - dikirimQty - rtsProsesQty
+
+                // 4. Total overall inventory we own (Warehouse + Transit + Back to us)
+                const endingStock = stokGudang + dikirimQty + rtsProsesQty
+
+                // 5. Calculate HPP: (HPP produk + HPP rata2 pembelian) / 2
+                const baseHpp = Number(p.hpp) || 0
                 const pItems = allPurchasedItems.filter(it => it.product_id === p.id || (it.sku && p.sku && it.sku === p.sku) || it.name === p.name)
                 let totalCost = 0
                 let totalQty = 0
@@ -81,27 +129,16 @@ export default function StokOverviewPage() {
                     totalQty += q
                 })
                 const purchaseHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : 0
-                // Jika ada pembelian: rata-rata dari HPP produk dan HPP pembelian
-                // Jika belum ada pembelian: pakai HPP produk
                 const avgHpp = purchaseHpp > 0 ? Math.round((baseHpp + purchaseHpp) / 2) : baseHpp
 
-                // Calculate Return in process
-                const prodReturns = activeReturnSales.filter(s => s.seller_sku ? s.seller_sku === p.sku : s.product_name === p.name)
-                const returnQty = prodReturns.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0)
-
-                const endingStock = computedStock + returnQty
                 const stockValue = endingStock * avgHpp
-
-                // Calculate shipped qty
-                const prodShipped = shippedSales.filter(s => s.seller_sku ? s.seller_sku === p.sku : s.product_name === p.name)
-                const shippedQty = prodShipped.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0)
 
                 return {
                     ...p,
-                    stock: computedStock,
+                    stock: stokGudang,
                     avg_hpp: avgHpp,
-                    return_qty: returnQty,
-                    shipped_qty: shippedQty,
+                    return_qty: rtsProsesQty,
+                    shipped_qty: dikirimQty,
                     ending_stock: endingStock,
                     stock_value: stockValue
                 }
@@ -134,43 +171,29 @@ export default function StokOverviewPage() {
             <div className="stats-grid">
                 <div className="stat-card">
                     <div className="stat-card-header">
-                        <span className="stat-card-label">Total Produk</span>
-                        <div className="stat-card-icon purple">📦</div>
-                    </div>
-                    <div className="stat-card-value">{products.length}</div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-card-header">
-                        <span className="stat-card-label">Stok Tersedia</span>
-                        <div className="stat-card-icon green">✅</div>
-                    </div>
-                    <div className="stat-card-value">{products.filter(p => p.stock > 10).length}</div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-card-header">
-                        <span className="stat-card-label">Stok Rendah</span>
-                        <div className="stat-card-icon orange">⚠️</div>
-                    </div>
-                    <div className="stat-card-value">{products.filter(p => p.stock > 0 && p.stock <= 10).length}</div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-card-header">
-                        <span className="stat-card-label">Stok Habis</span>
-                        <div className="stat-card-icon red">🚫</div>
-                    </div>
-                    <div className="stat-card-value">{products.filter(p => p.stock <= 0).length}</div>
-                </div>
-                <div className="stat-card" style={{ gridColumn: 'span 2', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                    <div className="stat-card-header">
-                        <span className="stat-card-label" style={{ fontWeight: 'bold' }}>Total Valuasi Stok (Ending x HPP)</span>
-                        <div className="stat-card-icon" style={{ background: 'var(--primary-color)', color: 'white' }}>💎</div>
+                        <span className="stat-card-label" style={{ fontWeight: 'bold' }}>Valuasi Stok</span>
+                        <div className="stat-card-icon purple">💎</div>
                     </div>
                     <div className="stat-card-value">{fmt(filtered.reduce((sum, p) => sum + (p.stock_value || 0), 0))}</div>
                 </div>
-                <div className="stat-card" style={{ gridColumn: 'span 2', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                <div className="stat-card">
                     <div className="stat-card-header">
-                        <span className="stat-card-label" style={{ fontWeight: 'bold' }}>Total Stok Return (Qty)</span>
-                        <div className="stat-card-icon" style={{ background: 'var(--warning-color, #f59e0b)', color: 'white' }}>🔁</div>
+                        <span className="stat-card-label" style={{ fontWeight: 'bold' }}>Stok Gudang</span>
+                        <div className="stat-card-icon green">🏕️</div>
+                    </div>
+                    <div className="stat-card-value">{(filtered.reduce((sum, p) => sum + (p.stock || 0), 0)).toLocaleString('id-ID')}</div>
+                </div>
+                <div className="stat-card">
+                    <div className="stat-card-header">
+                        <span className="stat-card-label" style={{ fontWeight: 'bold' }}>Dikirim</span>
+                        <div className="stat-card-icon" style={{ background: 'var(--info-bg, rgba(59, 130, 246, 0.1))', color: '#3b82f6' }}>🚚</div>
+                    </div>
+                    <div className="stat-card-value">{(filtered.reduce((sum, p) => sum + (p.shipped_qty || 0), 0)).toLocaleString('id-ID')}</div>
+                </div>
+                <div className="stat-card">
+                    <div className="stat-card-header">
+                        <span className="stat-card-label" style={{ fontWeight: 'bold' }}>Return (Proses)</span>
+                        <div className="stat-card-icon orange" style={{ background: 'var(--warning-color, #f59e0b)', color: 'white' }}>🔁</div>
                     </div>
                     <div className="stat-card-value">{(filtered.reduce((sum, p) => sum + (p.return_qty || 0), 0)).toLocaleString('id-ID')}</div>
                 </div>

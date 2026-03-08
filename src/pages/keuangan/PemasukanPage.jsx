@@ -10,7 +10,7 @@ export default function PemasukanPage() {
     useEffect(() => {
         async function loadOptions() {
             const [catRes, payRes] = await Promise.all([
-                supabase.from('coa').select('id, code, name, parent_id').eq('type', 'income').is('parent_id', null).order('code').order('name'),
+                supabase.from('coa').select('id, code, name, parent_id').in('type', ['income', 'equity', 'liability', 'payable']).is('parent_id', null).order('code').order('name'),
                 supabase.from('coa').select('id, code, name, description').eq('account_group', 'Kas/Bank').order('code').order('name')
             ])
             if (catRes.data) setCategories(catRes.data)
@@ -19,7 +19,10 @@ export default function PemasukanPage() {
         loadOptions()
     }, [])
 
-    const categoryOptions = categories.map(c => ({ value: c.name, label: c.code ? `[${c.code}] ${c.name}` : c.name }))
+    const categoryOptions = categories.map(c => {
+        const label = c.code ? `[${c.code}] ${c.name}` : c.name
+        return { value: label, label }
+    })
     const paymentOptions = paymentAccounts.map(a => {
         let label = a.code ? `[${a.code}] ${a.name}` : a.name
         if (a.description) label += ` - ${a.description}`
@@ -29,6 +32,18 @@ export default function PemasukanPage() {
     function handleFormChange(name, value) {
         if (name === 'category') {
             setActiveCategory(value || '')
+        }
+    }
+
+    async function handleDeleteIncome(item) {
+        // Jika pencairan TikTok dihapus, hapus juga data withdraw di tiktok_withdrawals
+        if (item.category && item.category.includes('Pencairan TikTok') && item.sub_category) {
+            console.log('Deleting associated withdraw for store:', item.sub_category, 'amount:', item.amount, 'target_bank:', item.payment_method)
+            await supabase.from('tiktok_withdrawals')
+                .delete()
+                .eq('store', item.sub_category)
+                .eq('amount', item.amount)
+                .eq('target_bank', item.payment_method || '')
         }
     }
 
@@ -52,6 +67,7 @@ export default function PemasukanPage() {
                 { name: 'note', label: 'Keterangan / Catatan', type: 'textarea', placeholder: 'Catatan tambahan', required: false }
             ]}
             onFormChange={handleFormChange}
+            onDelete={handleDeleteIncome}
         />
     )
 }

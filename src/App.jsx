@@ -25,6 +25,7 @@ import PemasukanPage from './pages/keuangan/PemasukanPage'
 import PengeluaranPage from './pages/keuangan/PengeluaranPage'
 import LabaRugiPage from './pages/keuangan/LabaRugiPage'
 import NeracaPage from './pages/keuangan/NeracaPage'
+import PindahBukuPage from './pages/keuangan/PindahBukuPage'
 import ManagementUserPage from './pages/users/ManagementUserPage'
 import GeneralPage from './pages/pengaturan/GeneralPage'
 import CoaPage from './pages/pengaturan/CoaPage'
@@ -137,6 +138,7 @@ function AppRoutes() {
                 <Route path="keuangan/pengeluaran" element={<ProtectedRoute allowedRoles={MANAGEMENT}><PengeluaranPage /></ProtectedRoute>} />
                 <Route path="keuangan/laba-rugi" element={<ProtectedRoute allowedRoles={MANAGEMENT}><LabaRugiPage /></ProtectedRoute>} />
                 <Route path="keuangan/neraca" element={<ProtectedRoute allowedRoles={MANAGEMENT}><NeracaPage /></ProtectedRoute>} />
+                <Route path="keuangan/pindah-buku" element={<ProtectedRoute allowedRoles={MANAGEMENT}><PindahBukuPage /></ProtectedRoute>} />
 
                 {/* Management User */}
                 <Route path="users" element={<ProtectedRoute allowedRoles={ADMIN_OWNER}><ManagementUserPage /></ProtectedRoute>} />
