@@ -429,34 +429,43 @@ export default function PenjualanTiktokPage() {
 
             {showConfirmModal && importStats && (
                 <div className="modal-overlay">
-                    <div className="modal-content" style={{ maxWidth: '500px' }}>
+                    <div className="modal">
                         <div className="modal-header">
-                            <h2>Konfirmasi Import Data</h2>
-                            <button className="btn-close" onClick={cancelImport}>×</button>
+                            <h2>📋 Konfirmasi Import Data</h2>
+                            <button className="modal-close" onClick={cancelImport}>×</button>
                         </div>
                         <div className="modal-body">
-                            <p>Berikut adalah hasil pengecekan file yang diunggah:</p>
-                            <ul style={{ margin: '16px 0', paddingLeft: '24px', lineHeight: '1.6' }}>
-                                <li>✅ Akan ditambahkan: <b>{importStats.berhasil}</b> data</li>
-                                <li>🔄 Duplikat (diabaikan): <b>{importStats.duplikat}</b> data</li>
-                                <li>⚠️ Gagal (SKU Tidak Dikenal): <b>{importStats.gagal}</b> data</li>
-                            </ul>
+                            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>Hasil pengecekan file yang diunggah:</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '8px', padding: '10px 14px' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: 500 }}>✅ Data Baru</span>
+                                    <span style={{ fontWeight: 700, fontSize: '20px', color: '#10b981' }}>{importStats.berhasil}</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(107, 114, 128, 0.08)', border: '1px solid rgba(107, 114, 128, 0.2)', borderRadius: '8px', padding: '10px 14px' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: 500 }}>🔄 Duplikat (Dilewati)</span>
+                                    <span style={{ fontWeight: 700, fontSize: '20px', color: 'var(--text-muted)' }}>{importStats.duplikat}</span>
+                                </div>
+                                {importStats.gagal > 0 && (
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', padding: '10px 14px' }}>
+                                        <span style={{ fontSize: '13px', fontWeight: 500 }}>⚠️ Gagal (SKU Tidak Dikenal)</span>
+                                        <span style={{ fontWeight: 700, fontSize: '20px', color: '#ef4444' }}>{importStats.gagal}</span>
+                                    </div>
+                                )}
+                            </div>
                             {importStats.missingSkus && importStats.missingSkus.length > 0 && (
-                                <div style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', marginBottom: '16px' }}>
-                                    <p style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: 600, color: 'var(--text-danger)' }}>SKU yang belum terdaftar di Master Produk (Gagal):</p>
-                                    <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>{importStats.missingSkus.join(', ')}</p>
+                                <div style={{ padding: '10px 14px', background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '8px', marginBottom: '12px' }}>
+                                    <p style={{ margin: '0 0 6px 0', fontSize: '12px', fontWeight: 600, color: '#ef4444' }}>SKU belum terdaftar di Master Produk:</p>
+                                    <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)', wordBreak: 'break-all' }}>{importStats.missingSkus.join(', ')}</p>
                                 </div>
                             )}
-                            {importStats.berhasil > 0 ? (
-                                <p>Apakah Anda yakin ingin memproses data tersebut ke dalam sistem?</p>
-                            ) : (
-                                <p style={{ color: 'var(--text-danger)' }}>Tidak ada data baru yang bisa di-import.</p>
+                            {importStats.berhasil === 0 && (
+                                <div className="alert alert-error">⚠️ Tidak ada data baru yang bisa di-import.</div>
                             )}
                         </div>
-                        <div className="modal-footer" style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+                        <div className="modal-footer">
                             <button className="btn btn-secondary" onClick={cancelImport}>Batal</button>
                             {importStats.berhasil > 0 && (
-                                <button className="btn btn-primary" onClick={confirmImport}>Ya, Input Data</button>
+                                <button className="btn btn-primary" onClick={confirmImport}>✅ Ya, Import Sekarang</button>
                             )}
                         </div>
                     </div>

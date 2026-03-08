@@ -31,11 +31,11 @@ function findHeaderRowIndex(rows) {
  * Parse Excel ArrayBuffer into array of objects
  */
 export function parseXLSX(buffer) {
-    const workbook = XLSX.read(buffer, { type: 'array' })
+    const workbook = XLSX.read(buffer, { type: 'array', cellText: true, cellDates: true })
     const sheetName = workbook.SheetNames[0]
     const sheet = workbook.Sheets[sheetName]
 
-    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 })
+    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, dateNF: 'yyyy-mm-dd' })
     if (rawData.length < 2) return []
 
     const headerIdx = findHeaderRowIndex(rawData)
@@ -290,7 +290,7 @@ export function mapTiktokFinanceRow(row) {
 
     // Usually settlement amounts from TikTok are positive, 
     return {
-        order_id: getVal(['Order/adjustment ID', 'Order ID']),
+        order_id: String(getVal(['Order/adjustment ID', 'Order ID'])).trim(),
         store: getVal(['Store']),
         settlement_date: parseDate(getVal(['Creation date', 'Order settled time', 'Created Time'])),
         pencairan: parseNum(getVal(['Total estimated settlement amount', 'Total settlement amount'])),

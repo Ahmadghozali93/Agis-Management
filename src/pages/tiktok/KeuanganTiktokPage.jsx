@@ -192,13 +192,8 @@ export default function KeuanganTiktokPage() {
                 return parsed
             })
 
-            // Keep only those with an order ID
-            const uniqueMap = new Map()
-            mapped.forEach(item => {
-                if (!item.order_id) return
-                uniqueMap.set(item.order_id, item) // For finance, order_id is usually unique per settlement row
-            })
-            const uniqueData = Array.from(uniqueMap.values())
+            // Keep only those with an order ID (but allow multiple rows per order_id, e.g. settlement + adjustment)
+            const uniqueData = mapped.filter(item => !!item.order_id)
 
             if (uniqueData.length === 0) throw new Error('Tidak ada data settlement yang valid untuk di-import')
 
@@ -631,32 +626,37 @@ export default function KeuanganTiktokPage() {
 
             {showConfirmModal && importStats && (
                 <div className="modal-overlay">
-                    <div className="modal-content" style={{ maxWidth: '500px' }}>
+                    <div className="modal">
                         <div className="modal-header">
-                            <h2>Konfirmasi Import Data Keuangan</h2>
-                            <button className="btn-close" onClick={cancelImport}>×</button>
+                            <h2>📋 Konfirmasi Import Data</h2>
+                            <button className="modal-close" onClick={cancelImport}>×</button>
                         </div>
                         <div className="modal-body">
-                            <p>Berikut adalah hasil pengecekan file yang diunggah:</p>
-                            <ul style={{ margin: '16px 0', paddingLeft: '24px', lineHeight: '1.6' }}>
-                                <li>✅ Akan ditambahkan: <b>{importStats.berhasil}</b> data</li>
-                                <li>🔄 Duplikat (diabaikan): <b>{importStats.duplikat}</b> data</li>
+                            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>Hasil pengecekan file yang diunggah:</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '8px', padding: '10px 14px' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: 500 }}>✅ Data Baru</span>
+                                    <span style={{ fontWeight: 700, fontSize: '20px', color: '#10b981' }}>{importStats.berhasil}</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(107, 114, 128, 0.08)', border: '1px solid rgba(107, 114, 128, 0.2)', borderRadius: '8px', padding: '10px 14px' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: 500 }}>🔄 Duplikat (Dilewati)</span>
+                                    <span style={{ fontWeight: 700, fontSize: '20px', color: 'var(--text-muted)' }}>{importStats.duplikat}</span>
+                                </div>
                                 {importStats.matched > 0 && (
-                                    <li>🔗 Match & Auto Selesai: <b>{importStats.matched}</b> order Penjualan</li>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', borderRadius: '8px', padding: '10px 14px' }}>
+                                        <span style={{ fontSize: '13px', fontWeight: 500 }}>🔗 Match → Auto Selesai di Penjualan</span>
+                                        <span style={{ fontWeight: 700, fontSize: '20px', color: '#3b82f6' }}>{importStats.matched}</span>
+                                    </div>
                                 )}
-                            </ul>
-                            <p style={{ margin: '8px 0 0 0', fontSize: '13px' }}>*Catatan: Order di Penjualan yang terhubung akan otomatis berubah statusnya menjadi Selesai.</p>
-                            <br />
-                            {importStats.berhasil > 0 ? (
-                                <p>Apakah Anda yakin ingin memproses data tersebut ke dalam sistem?</p>
-                            ) : (
-                                <p style={{ color: 'var(--text-danger)' }}>Tidak ada data baru yang bisa di-import.</p>
+                            </div>
+                            {importStats.berhasil === 0 && (
+                                <div className="alert alert-error">⚠️ Tidak ada data baru yang bisa di-import.</div>
                             )}
                         </div>
-                        <div className="modal-footer" style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+                        <div className="modal-footer">
                             <button className="btn btn-secondary" onClick={cancelImport}>Batal</button>
                             {importStats.berhasil > 0 && (
-                                <button className="btn btn-primary" onClick={confirmImport}>Ya, Input Data</button>
+                                <button className="btn btn-primary" onClick={confirmImport}>✅ Ya, Import Sekarang</button>
                             )}
                         </div>
                     </div>
