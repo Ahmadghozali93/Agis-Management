@@ -12,9 +12,7 @@ import PenjualanTiktokPage from './pages/tiktok/PenjualanTiktokPage'
 import KeuanganTiktokPage from './pages/tiktok/KeuanganTiktokPage'
 import ReturnPage from './pages/tiktok/ReturnPage'
 import FailedCodPage from './pages/tiktok/FailedCodPage'
-import PenjualanMengantarPage from './pages/mengantar/PenjualanMengantarPage'
-import ReturnMengantarPage from './pages/mengantar/ReturnMengantarPage'
-import KeuanganMengantarPage from './pages/mengantar/KeuanganMengantarPage'
+
 import DataAkunPage from './pages/konten/DataAkunPage'
 import DashboardKontenPage from './pages/konten/DashboardKontenPage'
 import LaporanKontenPage from './pages/konten/LaporanKontenPage'
@@ -120,10 +118,7 @@ function AppRoutes() {
                 <Route path="tiktok/return" element={<ProtectedRoute allowedRoles={SALES}><ReturnPage /></ProtectedRoute>} />
                 <Route path="tiktok/failed-cod" element={<ProtectedRoute allowedRoles={SALES}><FailedCodPage /></ProtectedRoute>} />
 
-                {/* Mengantar */}
-                <Route path="mengantar/penjualan" element={<ProtectedRoute allowedRoles={SALES}><PenjualanMengantarPage /></ProtectedRoute>} />
-                <Route path="mengantar/return" element={<ProtectedRoute allowedRoles={SALES}><ReturnMengantarPage /></ProtectedRoute>} />
-                <Route path="mengantar/keuangan" element={<ProtectedRoute allowedRoles={SALES}><KeuanganMengantarPage /></ProtectedRoute>} />
+
 
                 {/* Konten */}
                 <Route path="konten/dashboard" element={<ProtectedRoute allowedRoles={ALL}><DashboardKontenPage /></ProtectedRoute>} />
