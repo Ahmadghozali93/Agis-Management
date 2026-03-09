@@ -121,7 +121,9 @@ export default function NeracaPage() {
         let persediaanIn = 0
         let persediaanOut = 0
         if (coa.name.toLowerCase().includes('persediaan')) {
-            persediaanIn = purchases.filter(p => p.status !== 'batal').reduce((s, p) => s + (p.total || 0), 0)
+            // Hanya pembelian yang valid ('pending' atau 'lunas') yang masuk persediaan gudang.
+            // 'belum_lunas' belum divalidasi jadi belum masuk mutasi stok.
+            persediaanIn = purchases.filter(p => p.status === 'pending' || p.status === 'lunas').reduce((s, p) => s + (p.total || 0), 0)
             persediaanOut = totalHpp
         }
 
@@ -147,7 +149,9 @@ export default function NeracaPage() {
         // Pembelian yang belum lunas otomatis masuk ke Utang Usaha
         let utangPembelian = 0
         if (coa.code === '2000' || coa.name.toLowerCase().includes('utang usaha')) {
-            const validPurchases = purchases.filter(p => p.status !== 'batal')
+            // Hanya order yang sudah divalidasi (pending) atau lunas yang masuk ke Utang Usaha.
+            // belum_lunas belum diakui sebagai utang/aset.
+            const validPurchases = purchases.filter(p => p.status === 'pending' || p.status === 'lunas')
             const totalP = validPurchases.reduce((s, p) => s + (p.total || 0), 0)
             const totalPay = payments.reduce((s, p) => s + (p.amount || 0), 0)
             utangPembelian = totalP - totalPay
