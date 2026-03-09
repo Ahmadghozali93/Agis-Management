@@ -52,8 +52,12 @@ export default function ReturnPage() {
     }, [dateFilter, customFrom, customTo, selectedMonth])
 
     useEffect(() => {
-        applyFilters()
-    }, [data, search, statusFilter, tokoFilter])
+        applyFilters(false)
+    }, [data])
+
+    useEffect(() => {
+        applyFilters(true)
+    }, [search, statusFilter, tokoFilter])
 
     const loadData = async () => {
         setLoading(true)
@@ -122,7 +126,7 @@ export default function ReturnPage() {
         }
     }
 
-    const applyFilters = () => {
+    const applyFilters = (resetPage = true) => {
         let result = [...data]
 
         // Status Barang Filter
@@ -154,7 +158,9 @@ export default function ReturnPage() {
         }
 
         setFiltered(result)
-        setCurrentPage(1)
+        if (resetPage) {
+            setCurrentPage(1)
+        }
     }
 
     const uniqueToko = [...new Set(data.map(d => d.sales_record?.warehouse_name).filter(Boolean))].sort()

@@ -51,9 +51,14 @@ export default function FailedCodPage() {
     }, [dateFilter, customFrom, customTo, selectedMonth])
 
     useEffect(() => {
-        applyFilters()
+        applyFilters(false)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [data, search, statusFilter, tokoFilter])
+    }, [data])
+
+    useEffect(() => {
+        applyFilters(true)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [search, statusFilter, tokoFilter])
 
     const loadData = async () => {
         setLoading(true)
@@ -273,7 +278,7 @@ export default function FailedCodPage() {
     // Get unique toko/warehouse for filter dropdown
     const uniqueToko = [...new Set(data.map(d => d.warehouse_name).filter(Boolean))].sort()
 
-    const applyFilters = () => {
+    const applyFilters = (resetPage = true) => {
         const filteredData = data.filter(item => {
             const failedRec = item.failed_cod_record || {}
 
@@ -300,7 +305,9 @@ export default function FailedCodPage() {
             )
         })
         setFiltered(filteredData)
-        setCurrentPage(1)
+        if (resetPage) {
+            setCurrentPage(1)
+        }
     }
 
     const fmtDate = (d) => {
