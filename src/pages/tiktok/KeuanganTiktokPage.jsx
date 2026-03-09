@@ -192,8 +192,21 @@ export default function KeuanganTiktokPage() {
                 return parsed
             })
 
-            // Keep only those with an order ID (but allow multiple rows per order_id, e.g. settlement + adjustment)
-            const uniqueData = mapped.filter(item => !!item.order_id)
+            // Group by order_id to aggregate multiple rows (like adjustments) for the same order
+            const uniqueMap = {}
+            mapped.forEach(item => {
+                const oid = item.order_id
+                if (!oid) return
+                if (!uniqueMap[oid]) {
+                    uniqueMap[oid] = { ...item }
+                } else {
+                    // Aggregate amounts for the same order
+                    uniqueMap[oid].pencairan += (item.pencairan || 0)
+                    uniqueMap[oid].harga_jual += (item.harga_jual || 0)
+                    uniqueMap[oid].platform_fee += (item.platform_fee || 0)
+                }
+            })
+            const uniqueData = Object.values(uniqueMap)
 
             if (uniqueData.length === 0) throw new Error('Tidak ada data settlement yang valid untuk di-import')
 
@@ -224,6 +237,7 @@ export default function KeuanganTiktokPage() {
                     countDuplikat++
                 } else {
                     toInsert.push(item)
+                    existingKeys.add(item.order_id) // Add to existing keys to prevent duplicates in the same file
                 }
             })
 
