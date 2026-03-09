@@ -226,7 +226,7 @@ export default function StokMutationPage() {
                                             </td>
                                             <td style={{ padding: '16px', textAlign: 'center', fontWeight: 'bold' }}>{m.qty}</td>
                                             <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-primary)' }}>
-                                                {m.hpp ? fmtCurrency(m.hpp) : '-'}
+                                                {m.hpp !== null && m.hpp !== undefined ? fmtCurrency(m.hpp) : '-'}
                                             </td>
                                             <td style={{ padding: '16px' }}>{m.note || '-'}</td>
                                         </tr>
