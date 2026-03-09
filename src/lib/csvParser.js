@@ -253,7 +253,27 @@ export function mapTiktokRow(row, productMap = {}) {
 export function mapTiktokFinanceRow(row) {
     const parseNum = (val) => {
         if (!val) return 0
-        const str = String(val).replace(/,/g, '') // remove commas if any
+        // Hapus "Rp", spasi, dan kemungkinan format aneh
+        let str = String(val).replace(/Rp\s?/gi, '').trim()
+
+        // Cek apakah format Indonesia (1.000.000,00)
+        // Jika ada koma DAN titik, dan koma ada di belakang titik -> Format Indo
+        if (str.includes(',') && str.includes('.') && str.lastIndexOf(',') > str.lastIndexOf('.')) {
+            str = str.replace(/\./g, '') // Hapus titik ribuan
+            str = str.replace(',', '.') // Ubah koma desimal jadi titik
+        }
+        // Jika format Indo tanpa desimal (1.000.000)
+        else if (str.includes('.') && !str.includes(',') && str.split('.').length > 2) {
+            str = str.replace(/\./g, '')
+        }
+        else if (str.includes('.') && !str.includes(',') && str.split('.')[1]?.length === 3) {
+            // Kemungkinan 1.000 (seribu)
+            str = str.replace(/\./g, '')
+        }
+        else {
+            str = str.replace(/,/g, '') // Asumsi koma adalah ribuan (format US)
+        }
+
         const num = parseFloat(str)
         return isNaN(num) ? 0 : num
     }
@@ -293,7 +313,7 @@ export function mapTiktokFinanceRow(row) {
         order_id: String(getVal(['Order/adjustment ID', 'Order ID'])).trim(),
         store: getVal(['Store']),
         settlement_date: parseDate(getVal(['Creation date', 'Order settled time', 'Created Time'])),
-        pencairan: parseNum(getVal(['Total estimated settlement amount', 'Total settlement amount'])),
+        pencairan: parseNum(getVal(['Total estimated settlement amount', 'Total settlement amount', 'Settlement amount', 'Settlement Amount'])),
         harga_jual: parseNum(getVal(['Total Revenue'])),
         platform_fee: parseNum(getVal(['Total Fees']))
     }
