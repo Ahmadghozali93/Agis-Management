@@ -79,8 +79,40 @@ export default function PembayaranPage() {
             const { error: err2 } = await supabase.from('purchases').update({ status: 'lunas' }).eq('id', selectedPurchaseId)
             if (err2) throw err2
 
+            // 3. Mutasi stok JIKA status sebelumnya 'belum_lunas'
+            // Jika status sebelumnya 'pending', stok sudah masuk saat divalidasi.
+            if (pur.status === 'belum_lunas') {
+                let itemsArray = pur.items
+                if (typeof itemsArray === 'string') {
+                    try { itemsArray = JSON.parse(itemsArray) } catch (e) { itemsArray = [] }
+                }
+                if (Array.isArray(itemsArray) && itemsArray.length > 0) {
+                    const mutasiPayload = itemsArray.map(item => ({
+                        product_name: item.name,
+                        sku: item.sku,
+                        type: 'in',
+                        qty: item.qty,
+                        hpp: (Number(item.qty) > 0) ? (Number(item.subtotal) / Number(item.qty)) : 0,
+                        reference_id: pur.purchase_no,
+                        note: `Pembayaran Lunas Pembelian dari ${pur.supplier_name}`,
+                        date: date
+                    }))
 
+                    const { error: mutErr } = await supabase.from('stock_mutations').insert(mutasiPayload)
+                    if (mutErr) {
+                        console.error('Mutation Error:', mutErr)
+                        throw new Error('Gagal mencatat mutasi stok: ' + mutErr.message)
+                    }
 
+                    for (const item of itemsArray) {
+                        const { data: prodData } = await supabase.from('products').select('stock').eq('id', item.product_id).single()
+                        if (prodData) {
+                            const currentStock = Number(prodData.stock) || 0
+                            await supabase.from('products').update({ stock: currentStock + Number(item.qty) }).eq('id', item.product_id)
+                        }
+                    }
+                }
+            }
             setShowForm(false)
             setSelectedPurchaseId('')
             setAccountId('')

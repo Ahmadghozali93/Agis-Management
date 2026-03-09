@@ -168,9 +168,12 @@ export default function PembelianPage() {
             }
 
             // --- STOCK & EXPENSE SYNC LOGIC ---
-            if (status === 'lunas' && oldStatus !== 'lunas') {
+            // If it becomes 'lunas' or 'pending' from 'belum_lunas', stock goes IN
+            if ((status === 'lunas' || status === 'pending') && oldStatus === 'belum_lunas') {
                 await syncToStock(items, 'in', `Pembelian dari ${supplierName}`, purchaseNo)
-            } else if (status === 'batal' && oldStatus === 'lunas') {
+            }
+            // If it becomes 'batal' from a status where stock was already IN ('lunas' or 'pending')
+            else if (status === 'batal' && (oldStatus === 'lunas' || oldStatus === 'pending')) {
                 await syncToStock(oldItems, 'out', `Batal Pembelian dari ${supplierName}`, purchaseNo)
             }
 
@@ -184,7 +187,7 @@ export default function PembelianPage() {
     const handleDelete = async (id, currentStatus, currentItems, currentPurchaseNo) => {
         if (!confirm("Yakin ingin menghapus pembelian ini?")) return
         try {
-            if (currentStatus === 'lunas') {
+            if (currentStatus === 'lunas' || currentStatus === 'pending') {
                 await syncToStock(currentItems, 'out', `Hapus Pembelian`, currentPurchaseNo)
             }
             const { error } = await supabase.from('purchases').delete().eq('id', id)
@@ -208,7 +211,11 @@ export default function PembelianPage() {
             note: reason,
             date: new Date().toISOString()
         }))
-        await supabase.from('stock_mutations').insert(mutasiPayload)
+        const { error: mutErr } = await supabase.from('stock_mutations').insert(mutasiPayload)
+        if (mutErr) {
+            console.error("Mutation Insert Error:", mutErr)
+            throw new Error("Gagal mencatat mutasi stok: " + mutErr.message)
+        }
 
         for (const item of itemsArray) {
             const { data: prodData } = await supabase.from('products').select('stock').eq('id', item.product_id).single()
