@@ -67,7 +67,14 @@ export function parseXLSX(buffer) {
     return dataLines.map(row => {
         const obj = {}
         headers.forEach((h, idx) => {
-            if (h) obj[h] = row[idx] !== undefined ? row[idx] : ''
+            if (h) {
+                let val = row[idx]
+                // Force long numeric IDs to string to prevent scientific notation/loss of precision
+                if (typeof val === 'number' && (h.toLowerCase().includes('id') || val > 1000000000000)) {
+                    val = String(val)
+                }
+                obj[h] = val !== undefined ? val : ''
+            }
         })
         return obj
     }).filter(obj => Object.keys(obj).length > 0)
@@ -252,26 +259,41 @@ export function mapTiktokRow(row, productMap = {}) {
  */
 export function mapTiktokFinanceRow(row) {
     const parseNum = (val) => {
-        if (!val) return 0
-        // Hapus "Rp", spasi, dan kemungkinan format aneh
-        let str = String(val).replace(/Rp\s?/gi, '').trim()
+        if (val === undefined || val === null || val === '') return 0
+        if (typeof val === 'number') return val
 
-        // Cek apakah format Indonesia (1.000.000,00)
-        // Jika ada koma DAN titik, dan koma ada di belakang titik -> Format Indo
-        if (str.includes(',') && str.includes('.') && str.lastIndexOf(',') > str.lastIndexOf('.')) {
-            str = str.replace(/\./g, '') // Hapus titik ribuan
-            str = str.replace(',', '.') // Ubah koma desimal jadi titik
+        let str = String(val).replace(/Rp\s?|[\s%]/gi, '').trim()
+        if (!str) return 0
+
+        // Count dots and commas
+        const dots = (str.match(/\./g) || []).length
+        const commas = (str.match(/,/g) || []).length
+
+        // If both present, identify thousands vs decimal
+        if (dots > 0 && commas > 0) {
+            if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
+                // ID format: 1.234,56
+                str = str.replace(/\./g, '').replace(',', '.')
+            } else {
+                // US format: 1,234.56
+                str = str.replace(/,/g, '')
+            }
         }
-        // Jika format Indo tanpa desimal (1.000.000)
-        else if (str.includes('.') && !str.includes(',') && str.split('.').length > 2) {
+        // If only commas and more than one, or followed by 3 digits (1,000)
+        else if (commas > 0 && (commas > 1 || /,\d{3}($|\D)/.test(str))) {
+            str = str.replace(/,/g, '')
+        }
+        // If only dots and more than one, or followed by 3 digits (1.000)
+        else if (dots > 0 && (dots > 1 || /\.\d{3}($|\D)/.test(str))) {
             str = str.replace(/\./g, '')
         }
-        else if (str.includes('.') && !str.includes(',') && str.split('.')[1]?.length === 3) {
-            // Kemungkinan 1.000 (seribu)
-            str = str.replace(/\./g, '')
+        // If only one comma and it looks like a decimal (123,45)
+        else if (commas === 1 && /,\d{2}$/.test(str)) {
+            str = str.replace(',', '.')
         }
+        // Fallback: just remove commas for standard parseFloat behavior
         else {
-            str = str.replace(/,/g, '') // Asumsi koma adalah ribuan (format US)
+            str = str.replace(/,/g, '')
         }
 
         const num = parseFloat(str)
@@ -310,12 +332,12 @@ export function mapTiktokFinanceRow(row) {
 
     // Usually settlement amounts from TikTok are positive, 
     return {
-        order_id: String(getVal(['Order/adjustment ID', 'Order ID'])).trim(),
-        store: getVal(['Store']),
-        settlement_date: parseDate(getVal(['Creation date', 'Order settled time', 'Created Time'])),
-        pencairan: parseNum(getVal(['Total estimated settlement amount', 'Total settlement amount', 'Settlement amount', 'Settlement Amount'])),
-        harga_jual: parseNum(getVal(['Total Revenue'])),
-        platform_fee: parseNum(getVal(['Total Fees']))
+        order_id: String(getVal(['Order/adjustment ID', 'Order ID', 'ID pesanan', 'ID penyesuaian/pesanan', 'Order/Adjustment ID'])).trim(),
+        store: getVal(['Store', 'Toko']),
+        settlement_date: parseDate(getVal(['Creation date', 'Order settled time', 'Created Time', 'Waktu penyelesaian pesanan', 'Tanggal pembuatan'])),
+        pencairan: parseNum(getVal(['Total estimated settlement amount', 'Total settlement amount', 'Settlement amount', 'Settlement Amount', 'Jumlah penyelesaian', 'Estimasi jumlah penyelesaian'])),
+        harga_jual: parseNum(getVal(['Total Revenue', 'Pendapatan total', 'Harga Jual'])),
+        platform_fee: parseNum(getVal(['Total Fees', 'Biaya total', 'Platform Fee', 'Potongan Platform']))
     }
 }
 

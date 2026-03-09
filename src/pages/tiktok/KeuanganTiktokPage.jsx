@@ -208,7 +208,9 @@ export default function KeuanganTiktokPage() {
             })
             const uniqueData = Object.values(uniqueMap)
 
-            if (uniqueData.length === 0) throw new Error('Tidak ada data settlement yang valid untuk di-import')
+            if (uniqueData.length === 0) {
+                throw new Error('Tidak ada data settlement yang valid untuk di-import (Order ID tidak ditemukan). Pastikan kolom "Order ID" ada di file.')
+            }
 
             // === Duplicate Check ===
             const orderIdsToCheck = uniqueData.map(item => item.order_id)
