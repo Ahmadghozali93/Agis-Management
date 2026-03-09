@@ -20,7 +20,7 @@ function fmtDate(d) {
     })
 }
 
-export default function ReturnPage() {
+export default function ReturnMengantarPage() {
     const [data, setData] = useState([])
     const [filtered, setFiltered] = useState([])
     const [loading, setLoading] = useState(true)
@@ -59,7 +59,7 @@ export default function ReturnPage() {
         setLoading(true)
         setError(null)
         try {
-            let query = supabase.from('tiktok_returns').select('*').order('created_at', { ascending: false })
+            let query = supabase.from('mengantar_returns').select('*').order('created_at', { ascending: false })
 
             // Date filter logic
             const now = new Date()
@@ -97,7 +97,7 @@ export default function ReturnPage() {
                 let salesData = []
                 for (let i = 0; i < orderIds.length; i += 100) {
                     const chunk = orderIds.slice(i, i + 100)
-                    const { data: s } = await supabase.from('tiktok_sales').select('*').in('order_id', chunk)
+                    const { data: s } = await supabase.from('mengantar_sales').select('*').in('order_id', chunk)
                     if (s) salesData = [...salesData, ...s]
                 }
 
@@ -168,7 +168,7 @@ export default function ReturnPage() {
         try {
             const q = addSearchQuery.trim()
             const { data: results, error } = await supabase
-                .from('tiktok_sales')
+                .from('mengantar_sales')
                 .select('*')
                 .or(`order_id.eq.${q},tracking_id.eq.${q}`)
                 .limit(1)
@@ -184,7 +184,7 @@ export default function ReturnPage() {
                 if (status === 'dikirim' || status === 'shipped') {
                     // Check if it's already in the returns table
                     const { data: existingReturn } = await supabase
-                        .from('tiktok_returns')
+                        .from('mengantar_returns')
                         .select('order_id')
                         .eq('order_id', order.order_id)
                         .single()
@@ -212,9 +212,9 @@ export default function ReturnPage() {
         setAddError('')
 
         try {
-            // 1. Insert into tiktok_returns
+            // 1. Insert into mengantar_returns
             const { error: insertError } = await supabase
-                .from('tiktok_returns')
+                .from('mengantar_returns')
                 .insert({
                     order_id: foundOrder.order_id,
                     reason: returnReason,
@@ -223,9 +223,9 @@ export default function ReturnPage() {
 
             if (insertError) throw insertError
 
-            // 2. Update order_status in tiktok_sales to 'Return'
+            // 2. Update order_status in mengantar_sales to 'Return'
             const { error: updateError } = await supabase
-                .from('tiktok_sales')
+                .from('mengantar_sales')
                 .update({ order_status: 'Return' })
                 .eq('order_id', foundOrder.order_id)
 
@@ -293,7 +293,7 @@ export default function ReturnPage() {
                 }
             }
 
-            const { error } = await supabase.from('tiktok_returns').update({ status: newStatus }).eq('id', returnId)
+            const { error } = await supabase.from('mengantar_returns').update({ status: newStatus }).eq('id', returnId)
             if (error) throw error
         } catch (err) {
             console.error('Update status error:', err)
@@ -309,7 +309,7 @@ export default function ReturnPage() {
             setData(prev => prev.map(d => d.id === returnId ? { ...d, is_validated: true } : d))
             setFiltered(prev => prev.map(d => d.id === returnId ? { ...d, is_validated: true } : d))
 
-            const { error } = await supabase.from('tiktok_returns').update({ is_validated: true }).eq('id', returnId)
+            const { error } = await supabase.from('mengantar_returns').update({ is_validated: true }).eq('id', returnId)
             if (error) throw error
 
             alert('Return berhasil divalidasi!');
@@ -323,7 +323,7 @@ export default function ReturnPage() {
     const handleStatusDanaChange = async (returnId, newStatusDana) => {
         try {
             setData(prev => prev.map(item => item.id === returnId ? { ...item, status_dana: newStatusDana } : item))
-            const { error } = await supabase.from('tiktok_returns').update({ status_dana: newStatusDana }).eq('id', returnId)
+            const { error } = await supabase.from('mengantar_returns').update({ status_dana: newStatusDana }).eq('id', returnId)
             if (error) throw error
         } catch (err) {
             alert('Gagal update status dana: ' + err.message)
@@ -339,7 +339,7 @@ export default function ReturnPage() {
             // Allow empty string to mean null/0
             const numValue = newBiaya === '' ? null : Number(newBiaya.replace(/\D/g, ''))
 
-            const { error } = await supabase.from('tiktok_returns').update({ biaya_return: numValue }).eq('id', returnId)
+            const { error } = await supabase.from('mengantar_returns').update({ biaya_return: numValue }).eq('id', returnId)
             if (error) throw error
         } catch (err) {
             console.error('Update biaya return', err)
@@ -364,7 +364,7 @@ export default function ReturnPage() {
                 <div className="alert alert-error" style={{ marginBottom: '20px' }}>
                     <strong>Database Error:</strong> {error}.
                     <br /><br />
-                    Pastikan tabel <code>tiktok_returns</code> sudah dibuat dengan kolom: <code>id</code> (UUID), <code>order_id</code> (TEXT UNIQUE), <code>tracking_id</code> (TEXT), <code>reason</code> (TEXT), <code>status</code> (TEXT DEFAULT 'Diproses'), dan <code>created_at</code>.
+                    Pastikan tabel <code>mengantar_returns</code> sudah dibuat dengan kolom: <code>id</code> (UUID), <code>order_id</code> (TEXT UNIQUE), <code>tracking_id</code> (TEXT), <code>reason</code> (TEXT), <code>status</code> (TEXT DEFAULT 'Diproses'), dan <code>created_at</code>.
                 </div>
             )}
 

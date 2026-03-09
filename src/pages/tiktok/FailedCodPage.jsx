@@ -190,7 +190,7 @@ export default function FailedCodPage() {
                 const qty = parseInt(item.quantity) || 0;
 
                 // Cleanup any existing mutation from previous status resolution
-                await supabase.from('stock_mutations').delete().like('description', `%Failed COD: ${orderId}%`)
+                await supabase.from('stock_mutations').delete().like('note', `%Failed COD: ${orderId}%`)
 
                 // Insert new mutation if resolving to Diterima or Hilang
                 if (qty > 0 && (newStatus === 'Diterima' || newStatus === 'Hilang')) {
@@ -207,7 +207,7 @@ export default function FailedCodPage() {
                         hpp: avgHpp,
                         type: type,
                         reference_id: orderId,
-                        description: desc,
+                        note: desc,
                         date: new Date().toISOString().substring(0, 10),
                         created_at: new Date().toISOString()
                     }])

@@ -34,11 +34,15 @@ const menuItems = [
         ]
     },
     {
-        key: 'agregator',
-        label: 'Penjualan Agregator',
-        icon: '🛒',
-        path: '/agregator',
-        roles: ['admin', 'owner', 'spv']
+        key: 'mengantar',
+        label: 'Mengantar',
+        icon: '🚚',
+        roles: ['admin', 'owner', 'spv', 'host'],
+        children: [
+            { key: 'penjualan-mengantar', label: 'Penjualan', path: '/mengantar/penjualan' },
+            { key: 'return-mengantar', label: 'Return', path: '/mengantar/return' },
+            { key: 'keuangan-mengantar', label: 'Keuangan', path: '/mengantar/keuangan' }
+        ]
     },
     {
         key: 'konten',
