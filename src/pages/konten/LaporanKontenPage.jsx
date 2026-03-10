@@ -30,6 +30,37 @@ export default function LaporanKontenPage() {
         ;['TikTok', 'Instagram', 'YouTube', 'Facebook', 'Shopee'].forEach(p => platformOptions.push({ value: p, label: p }))
     }
 
+    const konsepOptions = [
+        { value: 'Edukasi', label: 'Edukasi' },
+        { value: 'Hard Selling', label: 'Hard Selling' },
+        { value: 'Soft Selling', label: 'Soft Selling' },
+        { value: 'Review', label: 'Review Produk' },
+        { value: 'Trend/Challenge', label: 'Trend / Challenge' },
+        { value: 'Testimoni', label: 'Testimoni' },
+        { value: 'Vlog/Behind the Scenes', label: 'Vlog / Behind the Scenes' },
+        { value: 'Lainnya', label: 'Lainnya' }
+    ]
+
+    const handleValidate = async (item, status, loadData) => {
+        try {
+            const { error } = await supabase.from('content_reports').update({ validation_status: status }).eq('id', item.id)
+            if (error) throw error
+            loadData() // Refresh table
+        } catch (err) {
+            alert('Gagal mengupdate status: ' + err.message)
+        }
+    }
+
+    const renderCustomActions = (item, loadData) => {
+        if (item.validation_status !== 'pending') return null
+        return (
+            <>
+                <button className="btn btn-sm btn-success" onClick={() => handleValidate(item, 'approved', loadData)} title="Approve">✅</button>
+                <button className="btn btn-sm btn-danger" onClick={() => handleValidate(item, 'rejected', loadData)} title="Reject">❌</button>
+            </>
+        )
+    }
+
     return (
         <CrudPage
             tableName="content_reports"
@@ -60,16 +91,10 @@ export default function LaporanKontenPage() {
                 { name: 'platform', label: 'Platform', type: 'select', options: platformOptions },
                 { name: 'account_name', label: 'Nama Akun', type: 'select', options: accountOptions },
                 { name: 'title', label: 'Judul Konten', placeholder: 'Judul konten' },
-                { name: 'concept', label: 'Konsep', placeholder: 'Deskripsi konsep konten' },
-                { name: 'link', label: 'Link', placeholder: 'https://...', required: false },
-                {
-                    name: 'validation_status', label: 'Status Validasi (Admin)', type: 'select', options: [
-                        { value: 'pending', label: '⏳ Pending' },
-                        { value: 'approved', label: '✅ Approved' },
-                        { value: 'rejected', label: '❌ Rejected' }
-                    ]
-                }
+                { name: 'concept', label: 'Konsep', type: 'select', options: konsepOptions },
+                { name: 'link', label: 'Link', placeholder: 'https://...', required: false }
             ]}
+            customActions={renderCustomActions}
         />
     )
 }

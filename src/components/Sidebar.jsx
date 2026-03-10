@@ -7,14 +7,12 @@ const menuItems = [
         key: 'dashboard',
         label: 'Dashboard',
         icon: '📊',
-        path: '/dashboard',
-        roles: ['admin', 'owner', 'spv', 'host', 'creator']
+        path: '/dashboard'
     },
     {
         key: 'master',
         label: 'Master Produk',
         icon: '📦',
-        roles: ['admin', 'owner', 'spv'],
         children: [
             { key: 'kategori', label: 'Kategori', path: '/master/kategori' },
             { key: 'supplier', label: 'Data Supplier', path: '/master/supplier' },
@@ -25,7 +23,6 @@ const menuItems = [
         key: 'tiktok',
         label: 'Penjualan TikTok',
         icon: '🎵',
-        roles: ['admin', 'owner', 'spv', 'host'],
         children: [
             { key: 'penjualan-tt', label: 'Penjualan', path: '/tiktok/penjualan' },
             { key: 'failed-cod', label: 'Failed COD', path: '/tiktok/failed-cod' },
@@ -33,12 +30,10 @@ const menuItems = [
             { key: 'keuangan-tt', label: 'Keuangan', path: '/tiktok/keuangan' }
         ]
     },
-
     {
         key: 'konten',
         label: 'Konten',
         icon: '🎬',
-        roles: ['admin', 'owner', 'spv', 'host', 'creator'],
         children: [
             { key: 'dashboard-konten', label: 'Dashboard', path: '/konten/dashboard' },
             { key: 'data-akun', label: 'Data Akun', path: '/konten/data-akun' },
@@ -50,7 +45,6 @@ const menuItems = [
         key: 'inventory',
         label: 'Inventory',
         icon: '🏪',
-        roles: ['admin', 'owner', 'spv'],
         children: [
             { key: 'stok-overview', label: 'Stok Overview', path: '/inventory/stok-overview' },
             { key: 'stok-mutation', label: 'Stok Mutation', path: '/inventory/stok-mutation' }
@@ -60,7 +54,6 @@ const menuItems = [
         key: 'keuangan',
         label: 'Keuangan',
         icon: '💰',
-        roles: ['admin', 'owner', 'spv'],
         children: [
             { key: 'pembelian', label: 'Pembelian', path: '/keuangan/pembelian' },
             { key: 'pembayaran', label: 'Pembayaran', path: '/keuangan/pembayaran' },
@@ -75,17 +68,16 @@ const menuItems = [
         key: 'users',
         label: 'Management User',
         icon: '👥',
-        path: '/users',
-        roles: ['admin', 'owner']
+        path: '/users'
     },
     {
         key: 'pengaturan',
         label: 'Pengaturan',
         icon: '⚙️',
-        roles: ['admin', 'owner'],
         children: [
             { key: 'general', label: 'General', path: '/pengaturan/general' },
-            { key: 'coa', label: 'Chart of Accounts', path: '/pengaturan/coa' }
+            { key: 'coa', label: 'Chart of Accounts', path: '/pengaturan/coa' },
+            { key: 'hak-akses', label: 'Hak Akses', path: '/pengaturan/hak-akses' }
         ]
     }
 ]
@@ -94,11 +86,32 @@ export default function Sidebar({ collapsed, onClose }) {
     const [openMenu, setOpenMenu] = useState(null)
     const location = useLocation()
     const navigate = useNavigate()
-    const { profile } = useAuth()
+    const { profile, hasMenuAccess } = useAuth()
 
     const userRole = profile?.role || ''
 
-    const filteredMenu = menuItems.filter(item => item.roles.includes(userRole))
+    const filteredMenu = menuItems.map(item => {
+        if (userRole === 'admin') return item // admin sees all for now, but check hasMenuAccess below configures strictly. Actually, if admin can't see the menu they removed from themselves, they can't re-add. So we'll strictly use hasMenuAccess for all.
+        // Wait, if admin locks himself out, it's bad. So we provide a bypass for admin or just rely on the database.
+        // Relying on database is requested.
+        return item
+    }).filter(item => {
+        if (userRole === 'admin') return true // Always let admin see everything to prevent full lockout.
+        if (item.children) {
+            const hasKids = item.children.some(child => hasMenuAccess(child.key))
+            return hasKids || hasMenuAccess(item.key)
+        }
+        return hasMenuAccess(item.key)
+    }).map(item => {
+        if (userRole === 'admin') return item
+        if (item.children) {
+            return {
+                ...item,
+                children: item.children.filter(child => hasMenuAccess(child.key))
+            }
+        }
+        return item
+    })
 
     function handleMenuClick(item) {
         if (item.children) {

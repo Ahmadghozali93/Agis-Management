@@ -18,6 +18,9 @@ export default function NeracaPage() {
     const [purchases, setPurchases] = useState([])
     const [payments, setPayments] = useState([])
     const [transfers, setTransfers] = useState([])
+    const [tiktokFinance, setTiktokFinance] = useState([])
+    const [tiktokWithdrawals, setTiktokWithdrawals] = useState([])
+    const [matchedSalesForTikTok, setMatchedSalesForTikTok] = useState(new Set())
 
     useEffect(() => { loadData() }, [period])
 
@@ -41,6 +44,10 @@ export default function NeracaPage() {
             let payQ = supabase.from('payments').select('amount, method, date')
             let transQ = supabase.from('transfers').select('amount, from_account, to_account, date')
             let mutQ = supabase.from('stock_mutations').select('qty, hpp, date').eq('type', 'out')
+            let tikFinQ = supabase.from('tiktok_finance').select('order_id, pencairan, settlement_date, harga_jual, platform_fee')
+            let tikWithQ = supabase.from('tiktok_withdrawals').select('amount, withdraw_date')
+            // Don't filter sales by date when matching settlements, as old sales can be settled later
+            let salForTikQ = supabase.from('tiktok_sales').select('order_id')
 
             if (dateFilter) {
                 incQ = incQ.gte('date', dateFilter)
@@ -50,11 +57,13 @@ export default function NeracaPage() {
                 payQ = payQ.gte('date', dateFilter)
                 transQ = transQ.gte('date', dateFilter)
                 mutQ = mutQ.gte('date', dateFilter)
+                tikFinQ = tikFinQ.gte('settlement_date', dateFilter)
+                tikWithQ = tikWithQ.gte('withdraw_date', dateFilter)
             }
 
-            const [allCoasRes, incRes, expRes, salRes, purRes, payRes, transRes, mutRes] = await Promise.all([
+            const [allCoasRes, incRes, expRes, salRes, purRes, payRes, transRes, mutRes, tikFinRes, tikWithRes, salTikRes] = await Promise.all([
                 supabase.from('coa').select('id, code, name, type, account_group').order('code'),
-                incQ, expQ, salQ, purQ, payQ, transQ, mutQ
+                incQ, expQ, salQ, purQ, payQ, transQ, mutQ, tikFinQ, tikWithQ, salForTikQ
             ])
 
             const coas = allCoasRes.data || []
@@ -70,6 +79,12 @@ export default function NeracaPage() {
             setPayments(payRes.data || [])
             setTransfers(transRes.data || [])
             setOutMutations(mutRes.data || [])
+            setTiktokFinance(tikFinRes.data || [])
+            setTiktokWithdrawals(tikWithRes.data || [])
+
+            // For TikTok matching
+            const matchedSalesIds = new Set((salTikRes.data || []).map(s => s.order_id))
+            setMatchedSalesForTikTok(matchedSalesIds)
         } catch (err) {
             console.error('Error:', err)
         } finally {
@@ -127,7 +142,19 @@ export default function NeracaPage() {
             persediaanOut = totalHpp
         }
 
-        return moneyIn - moneyOut - paidOut + transferIn - transferOut + persediaanIn - persediaanOut
+        // TikTokShop COA handling (Case insensitive, handle "Tiktok Shop", "TikTokShop", etc)
+        let tiktokBalance = 0
+        const coaNameLower = coa.name.toLowerCase().replace(/\s/g, '')
+        const isTiktokShop = coaNameLower === 'tiktokshop' || coaNameLower.includes('tiktokshop')
+
+        if (isTiktokShop) {
+            const matchedFinance = tiktokFinance.filter(f => matchedSalesForTikTok.has(f.order_id))
+            const totalSettlement = matchedFinance.reduce((s, f) => s + (Number(f.pencairan) || 0), 0)
+            const totalWithdrawn = tiktokWithdrawals.reduce((s, w) => s + (Number(w.amount) || 0), 0)
+            tiktokBalance = totalSettlement - totalWithdrawn
+        }
+
+        return moneyIn - moneyOut - paidOut + transferIn - transferOut + persediaanIn - persediaanOut + tiktokBalance
     }
 
     // Get real type of a category label
@@ -172,10 +199,13 @@ export default function NeracaPage() {
     // Sisa fitur: LabaDitahan, dll (dihapus perhitungan hardcoded utangPembelian)
 
     // Total calculations (sum incomes/expenses. If COA type is not explicitly liability/equity/asset, treat as income/expense)
-    const totalSales = sales.reduce((s, x) => s + (x.total || 0), 0)
+    // Replace older sales logic with accurate TikTok Finance data (Pencairan as Net Revenue)
+    const matchedFinanceForCalc = tiktokFinance.filter(f => matchedSalesForTikTok.has(f.order_id))
+    const totalSales = matchedFinanceForCalc.reduce((s, x) => s + (Number(x.pencairan) || 0), 0)
 
     // For Pemasukan, we count it as income unless it's explicitly liability, equity, or asset
     const totalIncome = incomes.filter(i => {
+        if (i.category && i.category.toLowerCase().includes('pencairan')) return false
         const type = getCoaType(i.category)
         return type === 'income' || type === 'expense' || type === null
     }).reduce((s, i) => s + (i.amount || 0), 0)

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { utils, writeFile } from 'xlsx'
 import { parseCSV, parseXLSX, mapTiktokFinanceRow } from '../../lib/csvParser'
 
 export default function KeuanganTiktokPage() {
@@ -314,10 +315,18 @@ export default function KeuanganTiktokPage() {
             if (matchedToUpdate.length > 0) {
                 for (let i = 0; i < matchedToUpdate.length; i += 100) {
                     const chunk = matchedToUpdate.slice(i, i + 100)
-                    await supabase
+                    const { error: updErr, data: updData } = await supabase
                         .from('tiktok_sales')
-                        .update({ order_status: 'done' })
+                        .update({ order_status: 'Completed' })
                         .in('order_id', chunk)
+                        .select('order_id')
+
+                    if (updErr) {
+                        console.error('Error updating tiktok_sales status:', updErr)
+                        throw new Error("Gagal update status Penjualan (Mungkin kena blokir trigger Mutasi Stok): " + updErr.message)
+                    } else {
+                        console.log(`Updated ${updData?.length || 0} order statuses to Completed`)
+                    }
                 }
             }
 
@@ -379,16 +388,22 @@ export default function KeuanganTiktokPage() {
 
             // Update matched ones to 'done'
             if (newlyMatched.length > 0) {
+                let totalUpdated = 0
                 for (let i = 0; i < newlyMatched.length; i += 100) {
                     const chunk = newlyMatched.slice(i, i + 100)
-                    const { error: updateError } = await supabase
+                    const { error: updateError, data: updateData } = await supabase
                         .from('tiktok_sales')
-                        .update({ order_status: 'done' })
+                        .update({ order_status: 'Completed' })
                         .in('order_id', chunk)
+                        .select('order_id')
 
-                    if (updateError) throw updateError
+                    if (updateError) {
+                        console.error('Error in handleSyncUnmatched update:', updateError)
+                        throw updateError
+                    }
+                    totalUpdated += (updateData?.length || 0)
                 }
-                setImportResult({ success: true, count: newlyMatched.length, message: `Berhasil mensinkronkan ${newlyMatched.length} pesanan baru.` })
+                setImportResult({ success: true, count: totalUpdated, message: `Berhasil mensinkronkan dan mengupdate status ${totalUpdated} pesanan.` })
                 fetchData() // Refresh view
             } else {
                 setImportResult({ success: true, count: 0, message: 'Tidak ada data match baru yang ditemukan.' })
@@ -448,16 +463,15 @@ export default function KeuanganTiktokPage() {
             }])
             if (withdrawErr) throw withdrawErr
 
-            // 2. Insert into incomes
-            const { error: incomeErr } = await supabase.from('incomes').insert([{
-                category: `Pencairan TikTok`,
-                sub_category: withdrawStore,
+            // 2. Insert into transfers (Pindah Buku) instead of incomes
+            const { error: transferErr } = await supabase.from('transfers').insert([{
+                date: new Date(withdrawDate).toISOString().substring(0, 10),
+                from_account: withdrawStore,
+                to_account: withdrawTargetBank,
                 amount: amountNum,
-                payment_method: withdrawTargetBank || '',
-                note: `Pencairan TikTok - ${withdrawStore} ke ${withdrawTargetBank || 'Bank'}`,
-                date: new Date(withdrawDate).toISOString().substring(0, 10)
+                note: `Pencairan Dana TikTok - ${withdrawStore} ke ${withdrawTargetBank || 'Bank'}`
             }])
-            if (incomeErr) throw incomeErr
+            if (transferErr) throw transferErr
 
             setImportResult({ success: true, count: 1, message: `Berhasil mencairkan dana sebesar ${fmt(amountNum)} ke ${withdrawTargetBank}` })
             setShowWithdrawModal(false)
@@ -583,6 +597,29 @@ export default function KeuanganTiktokPage() {
         currentPage * ITEMS_PER_PAGE
     )
 
+    const handleExport = () => {
+        if (!filtered || filtered.length === 0) {
+            alert('Tidak ada data untuk di-export')
+            return
+        }
+
+        const exportData = filtered.map((item, index) => ({
+            'No': index + 1,
+            'Tanggal Settlement': item.settlement_date ? new Date(item.settlement_date).toLocaleDateString('id-ID') : '-',
+            'Order ID': item.order_id,
+            'Toko': item.store,
+            'Harga Jual': item.harga_jual,
+            'Platform Fee': item.platform_fee,
+            'Pencairan': item.pencairan,
+            'Status Match': matchedOrders.has(item.order_id) ? 'Match' : 'Unmatch'
+        }))
+
+        const worksheet = utils.json_to_sheet(exportData)
+        const workbook = utils.book_new()
+        utils.book_append_sheet(workbook, worksheet, "Keuangan TikTok")
+        writeFile(workbook, `Keuangan_TikTok_${new Date().toISOString().split('T')[0]}.xlsx`)
+    }
+
     // Ensure currentPage is valid if data shrinks
     useEffect(() => {
         if (currentPage > totalPages && totalPages > 0) {
@@ -616,6 +653,14 @@ export default function KeuanganTiktokPage() {
                         ) : (
                             <><span>💸</span> Withdraw</>
                         )}
+                    </button>
+
+                    <button
+                        className="btn btn-secondary"
+                        onClick={handleExport}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                        <span>📤</span> Export Excel
                     </button>
 
                     <input
@@ -665,8 +710,12 @@ export default function KeuanganTiktokPage() {
                                     </div>
                                 )}
                             </div>
-                            {importStats.berhasil === 0 && (
+                            {importStats.berhasil === 0 ? (
                                 <div className="alert alert-error">⚠️ Tidak ada data baru yang bisa di-import.</div>
+                            ) : (
+                                <div className="alert alert-success" style={{ marginBottom: '16px' }}>
+                                    ✨ Data valid. Siap untuk di-import.
+                                </div>
                             )}
                         </div>
                         <div className="modal-footer">

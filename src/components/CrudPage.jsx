@@ -11,7 +11,8 @@ export default function CrudPage({
     extraFilters = null,
     onValidate = null,
     onFormChange = null,
-    onDelete = null
+    onDelete = null,
+    customActions = null
 }) {
     const [data, setData] = useState([])
     const [loading, setLoading] = useState(true)
@@ -190,6 +191,7 @@ export default function CrudPage({
                                         {columns.map(col => <td key={col.key}>{formatCell(item, col)}</td>)}
                                         <td>
                                             <div className="table-actions">
+                                                {customActions && customActions(item, loadData)}
                                                 <button className="btn btn-sm btn-secondary" onClick={() => openEdit(item)}>✏️</button>
                                                 <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item.id)}>🗑️</button>
                                             </div>
@@ -236,6 +238,7 @@ export default function CrudPage({
                                 <div className="data-card-header">
                                     <span className="data-card-number">#{idx + 1}</span>
                                     <div className="data-card-actions">
+                                        {customActions && customActions(item, loadData)}
                                         <button className="btn btn-sm btn-secondary" onClick={() => openEdit(item)}>✏️</button>
                                         <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item.id)}>🗑️</button>
                                     </div>

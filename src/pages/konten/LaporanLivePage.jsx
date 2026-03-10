@@ -30,6 +30,26 @@ export default function LaporanLivePage() {
         ;['TikTok', 'Instagram', 'YouTube', 'Shopee Live'].forEach(p => platformOptions.push({ value: p, label: p }))
     }
 
+    const handleValidate = async (item, status, loadData) => {
+        try {
+            const { error } = await supabase.from('live_reports').update({ validation_status: status }).eq('id', item.id)
+            if (error) throw error
+            loadData() // Refresh table
+        } catch (err) {
+            alert('Gagal mengupdate status: ' + err.message)
+        }
+    }
+
+    const renderCustomActions = (item, loadData) => {
+        if (item.validation_status !== 'pending') return null
+        return (
+            <>
+                <button className="btn btn-sm btn-success" onClick={() => handleValidate(item, 'approved', loadData)} title="Approve">✅</button>
+                <button className="btn btn-sm btn-danger" onClick={() => handleValidate(item, 'rejected', loadData)} title="Reject">❌</button>
+            </>
+        )
+    }
+
     return (
         <CrudPage
             tableName="live_reports"
@@ -61,15 +81,9 @@ export default function LaporanLivePage() {
                 { name: 'account_name', label: 'Nama Akun', type: 'select', options: accountOptions },
                 { name: 'duration', label: 'Durasi (menit)', type: 'number', placeholder: '0' },
                 { name: 'viewers', label: 'Penonton', type: 'number', placeholder: '0' },
-                { name: 'revenue', label: 'Omzet', type: 'number', placeholder: '0' },
-                {
-                    name: 'validation_status', label: 'Status Validasi (Admin)', type: 'select', options: [
-                        { value: 'pending', label: '⏳ Pending' },
-                        { value: 'approved', label: '✅ Approved' },
-                        { value: 'rejected', label: '❌ Rejected' }
-                    ]
-                }
+                { name: 'revenue', label: 'Omzet', type: 'number', placeholder: '0' }
             ]}
+            customActions={renderCustomActions}
         />
     )
 }

@@ -14,6 +14,7 @@ const DEFAULT_ADMIN = {
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null)
     const [profile, setProfile] = useState(null)
+    const [permissions, setPermissions] = useState([])
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
@@ -46,14 +47,28 @@ export function AuthProvider({ children }) {
 
     async function fetchProfile(userId) {
         try {
-            const { data, error } = await supabase
+            const { data: profileData, error: profileError } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', userId)
                 .single()
-            if (error) throw error
-            setProfile(data)
-            setUser(prev => prev ? { ...prev, profile: data } : null)
+            if (profileError) throw profileError
+
+            if (profileData?.role) {
+                const { data: permData, error: permError } = await supabase
+                    .from('role_permissions')
+                    .select('menus')
+                    .eq('role', profileData.role)
+                    .single()
+                if (!permError && permData?.menus) {
+                    setPermissions(permData.menus)
+                } else {
+                    setPermissions([])
+                }
+            }
+
+            setProfile(profileData)
+            setUser(prev => prev ? { ...prev, profile: profileData } : null)
         } catch (err) {
             console.error('Error fetching profile:', err)
         } finally {
@@ -86,6 +101,7 @@ export function AuthProvider({ children }) {
         await supabase.auth.signOut()
         setUser(null)
         setProfile(null)
+        setPermissions([])
     }
 
     async function approveUser(userId) {
@@ -123,6 +139,7 @@ export function AuthProvider({ children }) {
     const value = {
         user,
         profile,
+        permissions,
         loading,
         login,
         register,
@@ -134,7 +151,8 @@ export function AuthProvider({ children }) {
         isAdmin: profile?.role === 'admin',
         isOwner: profile?.role === 'owner',
         isAdminOrOwner: profile?.role === 'admin' || profile?.role === 'owner',
-        hasAccess: (allowedRoles) => allowedRoles.includes(profile?.role)
+        hasAccess: (allowedRoles) => allowedRoles.includes(profile?.role),
+        hasMenuAccess: (menuKey) => permissions.includes(menuKey)
     }
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

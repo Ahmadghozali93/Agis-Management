@@ -7,6 +7,8 @@ export default function LabaRugiPage() {
     const [sales, setSales] = useState([])
     const [outMutations, setOutMutations] = useState([])
     const [allCoas, setAllCoas] = useState([])
+    const [tiktokFinance, setTiktokFinance] = useState([])
+    const [matchedSalesForTikTok, setMatchedSalesForTikTok] = useState(new Set())
     const [loading, setLoading] = useState(true)
     const [period, setPeriod] = useState('month')
 
@@ -19,6 +21,8 @@ export default function LabaRugiPage() {
             let expenseQuery = supabase.from('expenses').select('id, category, amount, date').order('date', { ascending: false })
             let salesQuery = supabase.from('tiktok_sales').select('id, total, settlement_date')
             let mutQuery = supabase.from('stock_mutations').select('qty, hpp, date').eq('type', 'out')
+            let tikFinQ = supabase.from('tiktok_finance').select('order_id, pencairan, settlement_date')
+            let salForTikQ = supabase.from('tiktok_sales').select('order_id')
 
             if (period !== 'all') {
                 const now = new Date()
@@ -33,15 +37,18 @@ export default function LabaRugiPage() {
                     expenseQuery = expenseQuery.gte('date', startDate)
                     salesQuery = salesQuery.gte('settlement_date', startDate)
                     mutQuery = mutQuery.gte('date', startDate)
+                    tikFinQ = tikFinQ.gte('settlement_date', startDate)
                 }
             }
 
-            const [{ data: inc }, { data: exp }, { data: sal }, { data: mutRes }, { data: coaData }] = await Promise.all([
+            const [{ data: inc }, { data: exp }, { data: sal }, { data: mutRes }, { data: coaData }, { data: tikFinData }, { data: salTikData }] = await Promise.all([
                 incomeQuery,
                 expenseQuery,
                 salesQuery,
                 mutQuery,
-                supabase.from('coa').select('code, name, type')
+                supabase.from('coa').select('code, name, type'),
+                tikFinQ,
+                salForTikQ
             ])
 
             setIncomes(inc || [])
@@ -49,6 +56,10 @@ export default function LabaRugiPage() {
             setSales(sal || [])
             setOutMutations(mutRes || [])
             setAllCoas(coaData || [])
+            setTiktokFinance(tikFinData || [])
+
+            const matchedSalesIds = new Set((salTikData || []).map(s => s.order_id))
+            setMatchedSalesForTikTok(matchedSalesIds)
         } catch (err) {
             console.error('Error:', err)
         } finally {
@@ -68,8 +79,9 @@ export default function LabaRugiPage() {
         return found ? found.type : null
     }
 
-    // Filter to only include real Incomes (exclude liability, payable, equity)
+    // Filter to only include real Incomes (exclude liability, payable, equity, and transfers like Pencairan)
     const validIncomes = incomes.filter(i => {
+        if (i.category && i.category.toLowerCase().includes('pencairan')) return false
         const type = getCoaType(i.category)
         return type !== 'liability' && type !== 'payable' && type !== 'equity' && type !== 'asset' && type !== 'fixed_asset' && type !== 'receivable'
     })
@@ -98,8 +110,9 @@ export default function LabaRugiPage() {
         expenseByCategory[cat].count++
     })
 
-    // Sales total
-    const totalSales = sales.reduce((s, x) => s + (x.total || 0), 0)
+    // Sales and Fees from TikTok Finance
+    const matchedFinanceForCalc = tiktokFinance.filter(f => matchedSalesForTikTok.has(f.order_id))
+    const totalSales = matchedFinanceForCalc.reduce((s, x) => s + (Number(x.pencairan) || 0), 0)
 
     // HPP / COGS total
     const totalHpp = outMutations.reduce((s, m) => s + (Number(m.qty || 0) * Number(m.hpp || 0)), 0)
@@ -159,7 +172,7 @@ export default function LabaRugiPage() {
                                     }}>
                                         <span style={{ flex: 1, minWidth: 0 }}>
                                             <span style={{ fontWeight: 500 }}>Penjualan TikTok</span>
-                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '8px' }}>({sales.length} trx)</span>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '8px' }}>({matchedFinanceForCalc.length} trx match)</span>
                                         </span>
                                         <span style={{ fontWeight: 600, color: 'var(--success)', whiteSpace: 'nowrap', textAlign: 'right', minWidth: '120px' }}>{fmt(totalSales)}</span>
                                     </div>

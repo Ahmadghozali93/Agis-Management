@@ -16,7 +16,7 @@ export default function StokOverviewPage() {
         try {
             const [prodRes, mutRes, purRes, fcRes, retRes, salesRes] = await Promise.all([
                 supabase.from('products').select('*').order('name'),
-                supabase.from('stock_mutations').select('product_name, sku, type, qty'),
+                supabase.from('stock_mutations').select('product_name, sku, type, qty, reference_id, note'),
                 supabase.from('purchases').select('items, status').neq('status', 'batal'),
                 supabase.from('tiktok_failed_cod').select('order_id, return_status'),
                 supabase.from('tiktok_returns').select('order_id, status'),
@@ -75,7 +75,7 @@ export default function StokOverviewPage() {
 
                 let dikirimQty = 0
                 let rtsProsesQty = 0
-                let completedQty = 0
+                let dynamicDeductionsQty = 0
 
                 prodSales.forEach(s => {
                     if (isBatal(s.order_status)) return // Ignored completely, stock never moved
@@ -84,35 +84,42 @@ export default function StokOverviewPage() {
                     const isFC = isFailedCod(s.order_status)
                     const isRet = isReturn(s.order_status)
 
+                    const hasOutMutation = prodMutations.some(m =>
+                        m.type === 'out' && ((m.reference_id && m.reference_id === s.order_id) || (m.note && m.note.includes(s.order_id)))
+                    )
+                    const hasInMutation = prodMutations.some(m =>
+                        m.type === 'in' && ((m.reference_id && m.reference_id === s.order_id) || (m.note && m.note.includes(s.order_id)))
+                    )
+
                     if (isFC) {
                         const rStatus = (fcMap.get(s.order_id) || 'diproses').toLowerCase()
                         if (rStatus === 'diproses') {
                             rtsProsesQty += qty // processing RTS
                         } else if (rStatus === 'diterima') {
-                            completedQty += qty // Sale acts as a fixed negative deduction to balance the explicit 'in' mutation
+                            if (hasInMutation) dynamicDeductionsQty += qty // Cancel out the explicit 'in' mutation to balance warehouse stock
                         } else if (rStatus === 'hilang') {
-                            // Sale completely ignored (0 deduction), letting explicit 'out' mutation control the deduction alone
+                            if (!hasOutMutation) dynamicDeductionsQty += qty // Item lost, needs dynamic deduction if no explicit out
                         } else if (isCompleted(s.order_status)) {
-                            completedQty += qty
+                            if (!hasOutMutation) dynamicDeductionsQty += qty
                         }
                     } else if (isRet) {
                         const rStatus = (retMap.get(s.order_id) || 'diproses').toLowerCase()
                         if (rStatus === 'diproses') {
                             rtsProsesQty += qty // in transit back to warehouse
                         } else if (rStatus === 'diterima') {
-                            completedQty += qty // balances the explicit 'in' mutation
+                            if (hasInMutation) dynamicDeductionsQty += qty
                         } else if (rStatus === 'hilang') {
-                            // ignored — explicit 'out' mutation controls deduction
+                            if (!hasOutMutation) dynamicDeductionsQty += qty
                         }
                     } else if (isCompleted(s.order_status)) {
-                        completedQty += qty // Order completely sold
+                        if (!hasOutMutation) dynamicDeductionsQty += qty // Order completely sold but no DB mutation yet
                     } else {
                         dikirimQty += qty // Processing, To Ship, Shipped, In Transit (active orders)
                     }
                 })
 
                 // 3. Current physical inventory in warehouse
-                const stokGudang = totalMutasi - completedQty - dikirimQty - rtsProsesQty
+                const stokGudang = totalMutasi - dynamicDeductionsQty - dikirimQty - rtsProsesQty
 
                 // 4. Total overall inventory we own (Warehouse + Transit + Back to us)
                 const endingStock = stokGudang + dikirimQty + rtsProsesQty

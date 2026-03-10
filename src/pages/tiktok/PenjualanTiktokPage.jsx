@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { utils, writeFile } from 'xlsx'
 import { parseCSV, parseXLSX, mapTiktokRow } from '../../lib/csvParser'
 
 const STATUS_MAP = {
@@ -225,11 +226,11 @@ export default function PenjualanTiktokPage() {
                 }
             }
 
-            // Fetch product SKU map from DB
+            // Fetch product SKU map from DB (case-insensitive)
             const { data: products } = await supabase.from('products').select('sku, name')
             const productMap = {}
                 ; (products || []).forEach(p => {
-                    if (p.sku) productMap[p.sku] = p.name
+                    if (p.sku) productMap[p.sku.toLowerCase().trim()] = p.name
                 })
 
             const mapped = rows.map(row => mapTiktokRow(row, productMap))
@@ -253,9 +254,10 @@ export default function PenjualanTiktokPage() {
             const missingSkus = new Set()
 
             uniqueData.forEach(item => {
-                if (item.seller_sku && !productMap[item.seller_sku]) {
+                const skuKey = (item.seller_sku || '').toLowerCase().trim()
+                if (!skuKey || !productMap[skuKey]) {
                     countGagal++
-                    missingSkus.add(item.seller_sku)
+                    missingSkus.add(item.seller_sku || '(SKU KOSONG)')
                 } else {
                     validData.push(item)
                 }
@@ -394,6 +396,33 @@ export default function PenjualanTiktokPage() {
     // Get array of unique statuses
     const uniqueStatuses = Object.keys(statusCounts).sort()
 
+    const handleExport = () => {
+        if (!filtered || filtered.length === 0) {
+            alert('Tidak ada data untuk di-export')
+            return
+        }
+
+        const exportData = filtered.map((item, index) => ({
+            'No': index + 1,
+            'Tanggal': item.order_date ? new Date(item.order_date).toLocaleDateString('id-ID') : '-',
+            'Order ID': item.order_id,
+            'Status': item.order_status,
+            'Username': item.buyer_username,
+            'Penerima': item.recipient,
+            'Produk': item.product_name,
+            'Variasi': item.variation,
+            'SKU': item.seller_sku,
+            'Qty': item.quantity,
+            'Toko/Gudang': item.warehouse_name,
+            'Resi': item.tracking_id
+        }))
+
+        const worksheet = utils.json_to_sheet(exportData)
+        const workbook = utils.book_new()
+        utils.book_append_sheet(workbook, worksheet, "Penjualan TikTok")
+        writeFile(workbook, `Penjualan_TikTok_${new Date().toISOString().split('T')[0]}.xlsx`)
+    }
+
     // Pagination logic
     const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
     const paginatedData = filtered.slice(
@@ -412,7 +441,14 @@ export default function PenjualanTiktokPage() {
         <div>
             <div className="page-header">
                 <h1>🎵 Penjualan TikTok</h1>
-                <div className="page-header-actions">
+                <div className="page-header-actions" style={{ display: 'flex', gap: '12px' }}>
+                    <button
+                        className="btn btn-secondary"
+                        onClick={handleExport}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                        <span>📤</span> Export Excel
+                    </button>
                     <label className={`btn btn-primary ${importing ? 'btn-disabled' : ''}`} style={{ cursor: importing ? 'wait' : 'pointer' }}>
                         {importing ? '⏳ Importing...' : '📥 Import File'}
                         <input
@@ -458,13 +494,22 @@ export default function PenjualanTiktokPage() {
                                     <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)', wordBreak: 'break-all' }}>{importStats.missingSkus.join(', ')}</p>
                                 </div>
                             )}
-                            {importStats.berhasil === 0 && (
+                            {importStats.gagal > 0 ? (
+                                <div className="alert alert-error" style={{ marginBottom: '16px' }}>
+                                    <div style={{ fontWeight: 700, marginBottom: '4px' }}>🚫 Upload Diblokir</div>
+                                    Terdapat {importStats.gagal} data dengan SKU yang tidak terdaftar. Silakan daftarkan SKU di menu <strong>Master Produk</strong> terlebih dahulu sebelum melakukan upload.
+                                </div>
+                            ) : importStats.berhasil === 0 ? (
                                 <div className="alert alert-error">⚠️ Tidak ada data baru yang bisa di-import.</div>
+                            ) : (
+                                <div className="alert alert-success" style={{ marginBottom: '16px' }}>
+                                    ✨ Semua SKU valid. Siap untuk di-import.
+                                </div>
                             )}
                         </div>
                         <div className="modal-footer">
                             <button className="btn btn-secondary" onClick={cancelImport}>Batal</button>
-                            {importStats.berhasil > 0 && (
+                            {(importStats.berhasil > 0 && importStats.gagal === 0) && (
                                 <button className="btn btn-primary" onClick={confirmImport}>✅ Ya, Import Sekarang</button>
                             )}
                         </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { utils, writeFile } from 'xlsx'
 import { getAverageHpp } from '../../lib/stockUtils'
 import { parseCSV, parseXLSX, mapTiktokFailedCodRow } from '../../lib/csvParser'
 
@@ -458,6 +459,38 @@ export default function FailedCodPage() {
     }
 
     const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
+    const handleExport = () => {
+        if (!filtered || filtered.length === 0) {
+            alert('Tidak ada data untuk di-export')
+            return
+        }
+
+        const exportData = filtered.map((item, index) => {
+            const failedRec = item.failed_cod_record || {}
+            return {
+                'No': index + 1,
+                'Order ID': item.order_id,
+                'Tgl Order': item.order_date ? new Date(item.order_date).toLocaleDateString('id-ID') : '-',
+                'Toko': item.warehouse_name || '-',
+                'Customer': item.buyer_username || item.recipient || '-',
+                'Produk': item.product_name || '-',
+                'Variasi': item.variation || '-',
+                'SKU': item.seller_sku || '-',
+                'Qty': item.quantity || 0,
+                'Status Retur': failedRec.return_status || 'Diproses',
+                'Alasan': failedRec.return_reason || '-',
+                'Tgl Retur': failedRec.return_time ? new Date(failedRec.return_time).toLocaleDateString('id-ID') : '-',
+                'Resi': item.tracking_id || failedRec.tracking_id || '-',
+                'Kurir': item.shipping_provider || '-'
+            }
+        })
+
+        const worksheet = utils.json_to_sheet(exportData)
+        const workbook = utils.book_new()
+        utils.book_append_sheet(workbook, worksheet, "Failed COD TikTok")
+        writeFile(workbook, `Failed_COD_TikTok_${new Date().toISOString().split('T')[0]}.xlsx`)
+    }
+
     const paginatedData = filtered.slice(
         (currentPage - 1) * ITEMS_PER_PAGE,
         currentPage * ITEMS_PER_PAGE
@@ -467,7 +500,10 @@ export default function FailedCodPage() {
         <div>
             <div className="page-header">
                 <h1>❌ Failed COD (Retur)</h1>
-                <div className="page-header-actions">
+                <div className="page-header-actions" style={{ display: 'flex', gap: '12px' }}>
+                    <button className="btn btn-secondary" onClick={handleExport}>
+                        <span>📤</span> Export Excel
+                    </button>
                     <label className={`btn btn-primary ${importing ? 'btn-disabled' : ''}`} style={{ cursor: importing ? 'wait' : 'pointer' }}>
                         {importing ? '⏳ Importing...' : '📥 Import File Retur'}
                         <input
@@ -499,29 +535,37 @@ export default function FailedCodPage() {
 
             {showConfirmModal && importStats && (
                 <div className="modal-overlay">
-                    <div className="modal-content" style={{ maxWidth: '500px' }}>
+                    <div className="modal">
                         <div className="modal-header">
-                            <h2>Konfirmasi Import Data Retur</h2>
-                            <button className="btn-close" onClick={cancelImport}>×</button>
+                            <h2>📋 Konfirmasi Import Data Retur</h2>
+                            <button className="modal-close" onClick={cancelImport}>×</button>
                         </div>
                         <div className="modal-body">
-                            <p>Berikut adalah hasil pengecekan file yang diunggah:</p>
-                            <ul style={{ margin: '16px 0', paddingLeft: '24px', lineHeight: '1.6' }}>
-                                <li>✅ Akan ditambahkan: <b>{importStats.berhasil}</b> data</li>
-                                <li>🔄 Duplikat (diabaikan): <b>{importStats.duplikat}</b> data</li>
-                            </ul>
-                            <p style={{ margin: '8px 0 0 0', fontSize: '13px' }}>*Catatan: Order di Penjualan yang sesuai akan otomatis menjadi RTS jika Anda melanjutkan proses ini.</p>
+                            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>Hasil pengecekan file yang diunggah:</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '8px', padding: '10px 14px' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: 500 }}>✅ Data Baru</span>
+                                    <span style={{ fontWeight: 700, fontSize: '20px', color: '#10b981' }}>{importStats.berhasil}</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(107, 114, 128, 0.08)', border: '1px solid rgba(107, 114, 128, 0.2)', borderRadius: '8px', padding: '10px 14px' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: 500 }}>🔄 Duplikat (Dilewati)</span>
+                                    <span style={{ fontWeight: 700, fontSize: '20px', color: 'var(--text-muted)' }}>{importStats.duplikat}</span>
+                                </div>
+                            </div>
+                            <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>*Catatan: Order di Penjualan yang sesuai akan otomatis menjadi RTS jika Anda melanjutkan proses ini.</p>
                             <br />
-                            {importStats.berhasil > 0 ? (
-                                <p>Apakah Anda yakin ingin memproses data tersebut ke dalam sistem?</p>
+                            {importStats.berhasil === 0 ? (
+                                <div className="alert alert-error">⚠️ Tidak ada data baru yang bisa di-import.</div>
                             ) : (
-                                <p style={{ color: 'var(--text-danger)' }}>Tidak ada data baru yang bisa di-import.</p>
+                                <div className="alert alert-success" style={{ marginBottom: '16px' }}>
+                                    ✨ Data valid. Siap untuk di-import (Auto RTS di Penjualan).
+                                </div>
                             )}
                         </div>
-                        <div className="modal-footer" style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+                        <div className="modal-footer">
                             <button className="btn btn-secondary" onClick={cancelImport}>Batal</button>
                             {importStats.berhasil > 0 && (
-                                <button className="btn btn-primary" onClick={confirmImport}>Ya, Input Data</button>
+                                <button className="btn btn-primary" onClick={confirmImport}>✅ Ya, Import Sekarang</button>
                             )}
                         </div>
                     </div>

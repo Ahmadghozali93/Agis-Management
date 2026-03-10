@@ -29,9 +29,10 @@ import PindahBukuPage from './pages/keuangan/PindahBukuPage'
 import ManagementUserPage from './pages/users/ManagementUserPage'
 import GeneralPage from './pages/pengaturan/GeneralPage'
 import CoaPage from './pages/pengaturan/CoaPage'
+import HakAksesPage from './pages/pengaturan/HakAksesPage'
 
-function ProtectedRoute({ children, allowedRoles }) {
-    const { profile, loading } = useAuth()
+function ProtectedRoute({ children, allowedMenuKey }) {
+    const { profile, loading, hasMenuAccess } = useAuth()
 
     if (loading) {
         return (
@@ -63,7 +64,7 @@ function ProtectedRoute({ children, allowedRoles }) {
         )
     }
 
-    if (allowedRoles && !allowedRoles.includes(profile.role)) {
+    if (allowedMenuKey && profile.role !== 'admin' && !hasMenuAccess(allowedMenuKey)) {
         return (
             <div style={{ padding: '60px 20px', textAlign: 'center' }}>
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>🚫</div>
@@ -92,11 +93,6 @@ function PublicRoute({ children }) {
     return children
 }
 
-const ALL = ['admin', 'owner', 'spv', 'host', 'creator']
-const ADMIN_OWNER = ['admin', 'owner']
-const MANAGEMENT = ['admin', 'owner', 'spv']
-const SALES = ['admin', 'owner', 'spv', 'host']
-
 function AppRoutes() {
     return (
         <Routes>
@@ -105,46 +101,45 @@ function AppRoutes() {
 
             <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
                 <Route index element={<Navigate to="/dashboard" replace />} />
-                <Route path="dashboard" element={<ProtectedRoute allowedRoles={ALL}><Dashboard /></ProtectedRoute>} />
+                <Route path="dashboard" element={<ProtectedRoute allowedMenuKey="dashboard"><Dashboard /></ProtectedRoute>} />
 
                 {/* Master Produk */}
-                <Route path="master/kategori" element={<ProtectedRoute allowedRoles={MANAGEMENT}><KategoriPage /></ProtectedRoute>} />
-                <Route path="master/supplier" element={<ProtectedRoute allowedRoles={MANAGEMENT}><SupplierPage /></ProtectedRoute>} />
-                <Route path="master/produk" element={<ProtectedRoute allowedRoles={MANAGEMENT}><ProdukPage /></ProtectedRoute>} />
+                <Route path="master/kategori" element={<ProtectedRoute allowedMenuKey="kategori"><KategoriPage /></ProtectedRoute>} />
+                <Route path="master/supplier" element={<ProtectedRoute allowedMenuKey="supplier"><SupplierPage /></ProtectedRoute>} />
+                <Route path="master/produk" element={<ProtectedRoute allowedMenuKey="produk"><ProdukPage /></ProtectedRoute>} />
 
                 {/* Penjualan TikTok */}
-                <Route path="tiktok/penjualan" element={<ProtectedRoute allowedRoles={SALES}><PenjualanTiktokPage /></ProtectedRoute>} />
-                <Route path="tiktok/keuangan" element={<ProtectedRoute allowedRoles={SALES}><KeuanganTiktokPage /></ProtectedRoute>} />
-                <Route path="tiktok/return" element={<ProtectedRoute allowedRoles={SALES}><ReturnPage /></ProtectedRoute>} />
-                <Route path="tiktok/failed-cod" element={<ProtectedRoute allowedRoles={SALES}><FailedCodPage /></ProtectedRoute>} />
-
-
+                <Route path="tiktok/penjualan" element={<ProtectedRoute allowedMenuKey="penjualan-tt"><PenjualanTiktokPage /></ProtectedRoute>} />
+                <Route path="tiktok/keuangan" element={<ProtectedRoute allowedMenuKey="keuangan-tt"><KeuanganTiktokPage /></ProtectedRoute>} />
+                <Route path="tiktok/return" element={<ProtectedRoute allowedMenuKey="return"><ReturnPage /></ProtectedRoute>} />
+                <Route path="tiktok/failed-cod" element={<ProtectedRoute allowedMenuKey="failed-cod"><FailedCodPage /></ProtectedRoute>} />
 
                 {/* Konten */}
-                <Route path="konten/dashboard" element={<ProtectedRoute allowedRoles={ALL}><DashboardKontenPage /></ProtectedRoute>} />
-                <Route path="konten/data-akun" element={<ProtectedRoute allowedRoles={ALL}><DataAkunPage /></ProtectedRoute>} />
-                <Route path="konten/laporan-konten" element={<ProtectedRoute allowedRoles={ALL}><LaporanKontenPage /></ProtectedRoute>} />
-                <Route path="konten/laporan-live" element={<ProtectedRoute allowedRoles={ALL}><LaporanLivePage /></ProtectedRoute>} />
+                <Route path="konten/dashboard" element={<ProtectedRoute allowedMenuKey="dashboard-konten"><DashboardKontenPage /></ProtectedRoute>} />
+                <Route path="konten/data-akun" element={<ProtectedRoute allowedMenuKey="data-akun"><DataAkunPage /></ProtectedRoute>} />
+                <Route path="konten/laporan-konten" element={<ProtectedRoute allowedMenuKey="laporan-konten"><LaporanKontenPage /></ProtectedRoute>} />
+                <Route path="konten/laporan-live" element={<ProtectedRoute allowedMenuKey="laporan-live"><LaporanLivePage /></ProtectedRoute>} />
 
                 {/* Inventory */}
-                <Route path="inventory/stok-overview" element={<ProtectedRoute allowedRoles={MANAGEMENT}><StokOverviewPage /></ProtectedRoute>} />
-                <Route path="inventory/stok-mutation" element={<ProtectedRoute allowedRoles={MANAGEMENT}><StokMutationPage /></ProtectedRoute>} />
+                <Route path="inventory/stok-overview" element={<ProtectedRoute allowedMenuKey="stok-overview"><StokOverviewPage /></ProtectedRoute>} />
+                <Route path="inventory/stok-mutation" element={<ProtectedRoute allowedMenuKey="stok-mutation"><StokMutationPage /></ProtectedRoute>} />
 
                 {/* Keuangan */}
-                <Route path="keuangan/pembelian" element={<ProtectedRoute allowedRoles={MANAGEMENT}><PembelianPage /></ProtectedRoute>} />
-                <Route path="keuangan/pembayaran" element={<ProtectedRoute allowedRoles={MANAGEMENT}><PembayaranPage /></ProtectedRoute>} />
-                <Route path="keuangan/pemasukan" element={<ProtectedRoute allowedRoles={MANAGEMENT}><PemasukanPage /></ProtectedRoute>} />
-                <Route path="keuangan/pengeluaran" element={<ProtectedRoute allowedRoles={MANAGEMENT}><PengeluaranPage /></ProtectedRoute>} />
-                <Route path="keuangan/laba-rugi" element={<ProtectedRoute allowedRoles={MANAGEMENT}><LabaRugiPage /></ProtectedRoute>} />
-                <Route path="keuangan/neraca" element={<ProtectedRoute allowedRoles={MANAGEMENT}><NeracaPage /></ProtectedRoute>} />
-                <Route path="keuangan/pindah-buku" element={<ProtectedRoute allowedRoles={MANAGEMENT}><PindahBukuPage /></ProtectedRoute>} />
+                <Route path="keuangan/pembelian" element={<ProtectedRoute allowedMenuKey="pembelian"><PembelianPage /></ProtectedRoute>} />
+                <Route path="keuangan/pembayaran" element={<ProtectedRoute allowedMenuKey="pembayaran"><PembayaranPage /></ProtectedRoute>} />
+                <Route path="keuangan/pemasukan" element={<ProtectedRoute allowedMenuKey="pemasukan"><PemasukanPage /></ProtectedRoute>} />
+                <Route path="keuangan/pengeluaran" element={<ProtectedRoute allowedMenuKey="pengeluaran"><PengeluaranPage /></ProtectedRoute>} />
+                <Route path="keuangan/laba-rugi" element={<ProtectedRoute allowedMenuKey="laba-rugi"><LabaRugiPage /></ProtectedRoute>} />
+                <Route path="keuangan/neraca" element={<ProtectedRoute allowedMenuKey="neraca"><NeracaPage /></ProtectedRoute>} />
+                <Route path="keuangan/pindah-buku" element={<ProtectedRoute allowedMenuKey="pindah-buku"><PindahBukuPage /></ProtectedRoute>} />
 
                 {/* Management User */}
-                <Route path="users" element={<ProtectedRoute allowedRoles={ADMIN_OWNER}><ManagementUserPage /></ProtectedRoute>} />
+                <Route path="users" element={<ProtectedRoute allowedMenuKey="users"><ManagementUserPage /></ProtectedRoute>} />
 
                 {/* Pengaturan */}
-                <Route path="pengaturan/general" element={<ProtectedRoute allowedRoles={ADMIN_OWNER}><GeneralPage /></ProtectedRoute>} />
-                <Route path="pengaturan/coa" element={<ProtectedRoute allowedRoles={ADMIN_OWNER}><CoaPage /></ProtectedRoute>} />
+                <Route path="pengaturan/general" element={<ProtectedRoute allowedMenuKey="general"><GeneralPage /></ProtectedRoute>} />
+                <Route path="pengaturan/coa" element={<ProtectedRoute allowedMenuKey="coa"><CoaPage /></ProtectedRoute>} />
+                <Route path="pengaturan/hak-akses" element={<ProtectedRoute allowedMenuKey="hak-akses"><HakAksesPage /></ProtectedRoute>} />
             </Route>
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

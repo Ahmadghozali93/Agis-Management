@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { utils, writeFile } from 'xlsx'
 import { getAverageHpp } from '../../lib/stockUtils'
 
 const STATUS_MAP = {
@@ -353,13 +354,46 @@ export default function ReturnPage() {
     }
 
     const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
+    const handleExport = () => {
+        if (!filtered || filtered.length === 0) {
+            alert('Tidak ada data untuk di-export')
+            return
+        }
+
+        const exportData = filtered.map((item, index) => {
+            const sr = item.sales_record || {}
+            return {
+                'No': index + 1,
+                'Tgl Input': item.created_at ? new Date(item.created_at).toLocaleDateString('id-ID') : '-',
+                'Order ID': item.order_id,
+                'Resi': item.tracking_id || sr.tracking_id || '-',
+                'Penerima': sr.recipient || sr.buyer_username || '-',
+                'Toko': sr.warehouse_name || '-',
+                'Produk': sr.product_name || '-',
+                'Variasi': sr.variation || '-',
+                'Qty': sr.quantity || 0,
+                'Status Barang': item.status || 'Diproses',
+                'Status Dana': item.status_dana || 'Diproses',
+                'Alasan': item.reason || '-'
+            }
+        })
+
+        const worksheet = utils.json_to_sheet(exportData)
+        const workbook = utils.book_new()
+        utils.book_append_sheet(workbook, worksheet, "Return TikTok")
+        writeFile(workbook, `Return_TikTok_${new Date().toISOString().split('T')[0]}.xlsx`)
+    }
+
     const paginatedData = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
 
     return (
         <div>
             <div className="page-header">
                 <h1>🔄 Return Penjualan</h1>
-                <div className="page-header-actions">
+                <div className="page-header-actions" style={{ display: 'flex', gap: '12px' }}>
+                    <button className="btn btn-secondary" onClick={handleExport}>
+                        <span>📤</span> Export Excel
+                    </button>
                     <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
                         ➕ Tambah Return
                     </button>

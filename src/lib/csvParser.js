@@ -192,8 +192,8 @@ function splitRow(line, delimiter) {
  * Matches product name from DB by SKU if available
  */
 export function mapTiktokRow(row, productMap = {}) {
-    const sellerSku = row['Seller SKU'] || ''
-    const matchedProduct = productMap[sellerSku]
+    const sellerSku = (row['Seller SKU'] || '').trim()
+    const matchedProduct = productMap[sellerSku.toLowerCase()]
 
     const parseNum = (val) => {
         if (!val) return 0
