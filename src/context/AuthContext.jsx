@@ -34,23 +34,32 @@ export function AuthProvider({ children }) {
 
     async function checkUser() {
         try {
-            await fetchGlobalSettings()
-            const { data: { session } } = await supabase.auth.getSession()
+            // Fetch settings independently so it doesn't block the auth loading
+            fetchGlobalSettings()
+
+            const { data, error } = await supabase.auth.getSession()
+            if (error) throw error
+
+            const session = data?.session
             if (session?.user) {
                 setUser(session.user)
                 await fetchProfile(session.user.id)
             } else {
                 setLoading(false)
             }
-        } catch {
+        } catch (err) {
+            console.error('Check user error:', err)
             setLoading(false)
         }
     }
 
     async function fetchGlobalSettings() {
         try {
-            const { data } = await supabase.from('settings').select('*').limit(1).single()
-            if (data) setGlobalSettings(data)
+            // Just select all without .single() to avoid PGRST116 errors if empty
+            const { data, error } = await supabase.from('settings').select('*').limit(1)
+            if (!error && data && data.length > 0) {
+                setGlobalSettings(data[0])
+            }
         } catch (err) {
             console.error('Failed to load settings:', err)
         }
