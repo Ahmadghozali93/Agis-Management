@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
 
 export default function GeneralPage() {
+    const { fetchGlobalSettings } = useAuth()
     const [settings, setSettings] = useState({ store_name: '', logo_url: '' })
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
+    const [uploading, setUploading] = useState(false)
     const [success, setSuccess] = useState(false)
 
     useEffect(() => { loadSettings() }, [])
@@ -17,6 +20,47 @@ export default function GeneralPage() {
             console.log('No settings yet')
         } finally {
             setLoading(false)
+        }
+    }
+
+    async function handleLogoUpload(e) {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        setUploading(true)
+        try {
+            // Check if user is authenticated completely
+            const { data: session } = await supabase.auth.getSession()
+            if (!session?.session?.user) throw new Error("Anda harus login untuk mengupload file")
+
+            const fileExt = file.name.split('.').pop()
+            const fileName = `logo-${Date.now()}.${fileExt}`
+            const filePath = `settings/${fileName}`
+
+            // Upload the file to the "assets" bucket
+            const { error: uploadError } = await supabase.storage
+                .from('assets')
+                .upload(filePath, file, { upsert: true })
+
+            if (uploadError) {
+                if (uploadError.statusCode === 404 || uploadError.message === 'Bucket not found') {
+                    throw new Error('Bucket "assets" belum dibuat di Supabase Storage. Silakan buat bucket publik bernama "assets" terlebih dahulu.')
+                }
+                throw uploadError
+            }
+
+            // Get the public URL
+            const { data: publicUrlData } = supabase.storage
+                .from('assets')
+                .getPublicUrl(filePath)
+
+            setSettings({ ...settings, logo_url: publicUrlData.publicUrl })
+
+        } catch (err) {
+            console.error('Upload Error:', err)
+            alert(err.message || 'Gagal mengupload logo')
+        } finally {
+            setUploading(false)
         }
     }
 
@@ -39,6 +83,7 @@ export default function GeneralPage() {
                 if (error) throw error
                 setSettings(data)
             }
+            if (fetchGlobalSettings) await fetchGlobalSettings()
             setSuccess(true)
             setTimeout(() => setSuccess(false), 3000)
         } catch (err) {
@@ -66,17 +111,32 @@ export default function GeneralPage() {
                         <label>Logo Toko</label>
                         <div className="logo-preview">
                             {settings.logo_url ? (
-                                <img src={settings.logo_url} alt="Logo" />
+                                <img src={settings.logo_url} alt="Logo" style={{ maxWidth: '100px', maxHeight: '100px', objectFit: 'contain' }} />
                             ) : '🛍️'}
                         </div>
-                        <input
-                            type="url"
-                            className="form-input"
-                            placeholder="URL logo (https://...)"
-                            value={settings.logo_url || ''}
-                            onChange={e => setSettings({ ...settings, logo_url: e.target.value })}
-                        />
-                        <small style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Masukkan URL gambar logo</small>
+
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                            <input
+                                type="url"
+                                className="form-input"
+                                placeholder="URL logo (https://...) atau upload gambar"
+                                value={settings.logo_url || ''}
+                                onChange={e => setSettings({ ...settings, logo_url: e.target.value })}
+                            />
+                            <label className="btn btn-secondary" style={{ cursor: 'pointer', opacity: uploading ? 0.7 : 1 }}>
+                                {uploading ? '⏳' : 'Pilih File'}
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleLogoUpload}
+                                    style={{ display: 'none' }}
+                                    disabled={uploading}
+                                />
+                            </label>
+                        </div>
+                        <small style={{ color: 'var(--text-muted)', fontSize: '11px', marginTop: '4px', display: 'block' }}>
+                            Masukkan URL gambar langsung ATAU pilih file dari komputer untuk diupload.
+                        </small>
                     </div>
 
                     <div className="form-group">

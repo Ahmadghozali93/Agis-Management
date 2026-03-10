@@ -86,7 +86,7 @@ export default function Sidebar({ collapsed, onClose }) {
     const [openMenu, setOpenMenu] = useState(null)
     const location = useLocation()
     const navigate = useNavigate()
-    const { profile, hasMenuAccess } = useAuth()
+    const { profile, hasMenuAccess, globalSettings } = useAuth()
 
     const userRole = profile?.role || ''
 
@@ -140,9 +140,16 @@ export default function Sidebar({ collapsed, onClose }) {
     return (
         <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${!collapsed ? 'mobile-open' : ''}`}>
             <div className="sidebar-brand">
-                <div className="sidebar-brand-icon">OS</div>
+                {globalSettings?.logo_url ? (
+                    <img src={globalSettings.logo_url} alt="Logo" className="sidebar-brand-img" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
+                ) : (
+                    <div className="sidebar-brand-icon">
+                        {globalSettings?.store_name ? globalSettings.store_name.substring(0, 2).toUpperCase() : 'OS'}
+                    </div>
+                )}
+
                 <div className="sidebar-brand-text">
-                    <h2>Olshop Manager</h2>
+                    <h2>{globalSettings?.store_name || 'Olshop Manager'}</h2>
                     <span>Management System</span>
                 </div>
             </div>

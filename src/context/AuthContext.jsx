@@ -15,6 +15,7 @@ export function AuthProvider({ children }) {
     const [user, setUser] = useState(null)
     const [profile, setProfile] = useState(null)
     const [permissions, setPermissions] = useState([])
+    const [globalSettings, setGlobalSettings] = useState(null)
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
@@ -33,6 +34,7 @@ export function AuthProvider({ children }) {
 
     async function checkUser() {
         try {
+            await fetchGlobalSettings()
             const { data: { session } } = await supabase.auth.getSession()
             if (session?.user) {
                 setUser(session.user)
@@ -42,6 +44,15 @@ export function AuthProvider({ children }) {
             }
         } catch {
             setLoading(false)
+        }
+    }
+
+    async function fetchGlobalSettings() {
+        try {
+            const { data } = await supabase.from('settings').select('*').limit(1).single()
+            if (data) setGlobalSettings(data)
+        } catch (err) {
+            console.error('Failed to load settings:', err)
         }
     }
 
@@ -140,6 +151,8 @@ export function AuthProvider({ children }) {
         user,
         profile,
         permissions,
+        globalSettings,
+        fetchGlobalSettings,
         loading,
         login,
         register,
