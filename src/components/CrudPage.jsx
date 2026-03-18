@@ -12,7 +12,8 @@ export default function CrudPage({
     onValidate = null,
     onFormChange = null,
     onDelete = null,
-    customActions = null
+    customActions = null,
+    disableActionsWhen = null
 }) {
     const [data, setData] = useState([])
     const [loading, setLoading] = useState(true)
@@ -21,6 +22,8 @@ export default function CrudPage({
     const [formData, setFormData] = useState({})
     const [search, setSearch] = useState('')
     const [error, setError] = useState('')
+    const [currentPage, setCurrentPage] = useState(1)
+    const ITEMS_PER_PAGE = 15
 
     const loadData = useCallback(async () => {
         try {
@@ -125,6 +128,40 @@ export default function CrudPage({
         })
     })
 
+    const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE)
+    const paginatedData = filteredData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
+
+    const handleSearchChange = (e) => {
+        setSearch(e.target.value)
+        setCurrentPage(1)
+    }
+
+    function renderPagination() {
+        if (totalPages <= 1) return null
+        const pages = []
+        const start = Math.max(1, currentPage - 2)
+        const end = Math.min(totalPages, start + 4)
+        for (let i = start; i <= end; i++) pages.push(i)
+        return (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)', borderRadius: '0 0 var(--radius-lg) var(--radius-lg)' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                    Halaman {currentPage} dari {totalPages} ({filteredData.length} data)
+                </span>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                    <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '12px' }}
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>‹</button>
+                    {pages.map(p => (
+                        <button key={p} className={`btn ${currentPage === p ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{ padding: '5px 10px', fontSize: '12px', minWidth: '32px' }}
+                            onClick={() => setCurrentPage(p)}>{p}</button>
+                    ))}
+                    <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '12px' }}
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>›</button>
+                </div>
+            </div>
+        )
+    }
+
     function formatCell(item, col) {
         const val = item[col.key]
         if (col.format === 'shortId') return <span className="cell-id">{val ? val.substring(0, 8).toUpperCase() : '-'}</span>
@@ -156,7 +193,7 @@ export default function CrudPage({
                             type="text"
                             placeholder="Cari data..."
                             value={search}
-                            onChange={e => setSearch(e.target.value)}
+                            onChange={handleSearchChange}
                         />
                     </div>
                     <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
@@ -185,15 +222,19 @@ export default function CrudPage({
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredData.map((item, idx) => (
+                                {paginatedData.map((item, idx) => (
                                     <tr key={item.id}>
-                                        <td>{idx + 1}</td>
+                                        <td>{(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}</td>
                                         {columns.map(col => <td key={col.key}>{formatCell(item, col)}</td>)}
                                         <td>
                                             <div className="table-actions">
                                                 {customActions && customActions(item, loadData)}
-                                                <button className="btn btn-sm btn-secondary" onClick={() => openEdit(item)}>✏️</button>
-                                                <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item.id)}>🗑️</button>
+                                                {!(disableActionsWhen && disableActionsWhen(item)) && (
+                                                    <>
+                                                        <button className="btn btn-sm btn-secondary" onClick={() => openEdit(item)}>✏️</button>
+                                                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item.id)}>🗑️</button>
+                                                    </>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -202,6 +243,7 @@ export default function CrudPage({
                         </table>
                     )}
                 </div>
+                {renderPagination()}
             </div>
 
             {/* Mobile Cards */}
@@ -213,7 +255,7 @@ export default function CrudPage({
                             type="text"
                             placeholder="Cari data..."
                             value={search}
-                            onChange={e => setSearch(e.target.value)}
+                            onChange={handleSearchChange}
                         />
                     </div>
                     <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
@@ -233,14 +275,18 @@ export default function CrudPage({
                     </div>
                 ) : (
                     <div className="cards-list">
-                        {filteredData.map((item, idx) => (
+                        {paginatedData.map((item, idx) => (
                             <div key={item.id} className="data-card">
                                 <div className="data-card-header">
-                                    <span className="data-card-number">#{idx + 1}</span>
+                                    <span className="data-card-number">#{(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}</span>
                                     <div className="data-card-actions">
                                         {customActions && customActions(item, loadData)}
-                                        <button className="btn btn-sm btn-secondary" onClick={() => openEdit(item)}>✏️</button>
-                                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item.id)}>🗑️</button>
+                                        {!(disableActionsWhen && disableActionsWhen(item)) && (
+                                            <>
+                                                <button className="btn btn-sm btn-secondary" onClick={() => openEdit(item)}>✏️</button>
+                                                <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item.id)}>🗑️</button>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="data-card-body">
@@ -255,6 +301,7 @@ export default function CrudPage({
                         ))}
                     </div>
                 )}
+                {renderPagination()}
             </div>
 
             {showModal && (

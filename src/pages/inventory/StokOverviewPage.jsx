@@ -14,19 +14,27 @@ export default function StokOverviewPage() {
 
     async function loadProducts() {
         try {
-            const [prodRes, mutRes, purRes, fcRes, retRes, salesRes] = await Promise.all([
+            const [prodRes, mutRes, purRes, fcRes, retRes, salesRes, mengantarRes, mengantarRetRes] = await Promise.all([
                 supabase.from('products').select('*').order('name'),
                 supabase.from('stock_mutations').select('product_name, sku, type, qty, reference_id, note'),
                 supabase.from('purchases').select('items, status').neq('status', 'batal'),
                 supabase.from('tiktok_failed_cod').select('order_id, return_status'),
                 supabase.from('tiktok_returns').select('order_id, status'),
-                supabase.from('tiktok_sales').select('order_id, order_status, product_name, seller_sku, quantity')
+                supabase.from('tiktok_sales').select('order_id, order_status, product_name, seller_sku, quantity'),
+                supabase.from('mengantar_sales').select('tracking_id, order_id, last_status, goods_description, quantity, product_id'),
+                supabase.from('mengantar_returns').select('tracking_id, return_status')
             ])
             if (prodRes.error) throw prodRes.error
             if (mutRes.error) throw mutRes.error
 
             const mutations = mutRes.data || []
             const sales = salesRes.data || []
+            const mengantarSales = mengantarRes.data || []
+
+            // Build mengantar return map: tracking_id → return_status (lowercase)
+            const mengantarReturnMap = new Map()
+            ;(mengantarRetRes?.data || []).forEach(r => mengantarReturnMap.set(r.tracking_id, (r.return_status || '').toLowerCase()))
+
 
             // Extract all purchased items for HPP calculation
             const allPurchasedItems = []
@@ -117,6 +125,61 @@ export default function StokOverviewPage() {
                         dikirimQty += qty // Processing, To Ship, Shipped, In Transit (active orders)
                     }
                 })
+
+                // 2b. Tally Mengantar Sales
+                // Match by product_id (SKU) first, fallback to goods_description (name)
+                const prodMengantarSales = mengantarSales.filter(s => {
+                    if (s.product_id && p.sku) {
+                        return s.product_id.toLowerCase().trim() === p.sku.toLowerCase().trim()
+                    }
+                    if (s.goods_description && p.name) {
+                        return s.goods_description.toLowerCase().trim() === p.name.toLowerCase().trim()
+                    }
+                    return false
+                })
+
+                prodMengantarSales.forEach(s => {
+                    const qty = Number(s.quantity) || 0
+                    const status = (s.last_status || '').toLowerCase()
+                    const refId = s.tracking_id || s.order_id
+
+                    const hasOutMutation = prodMutations.some(m =>
+                        m.type === 'out' &&
+                        ((m.reference_id && m.reference_id === refId) || (m.note && refId && m.note.includes(refId)))
+                    )
+                    const hasInMutation = prodMutations.some(m =>
+                        m.type === 'in' &&
+                        ((m.reference_id && m.reference_id === refId) || (m.note && refId && m.note.includes(refId)))
+                    )
+
+                    if (status === 'selesai' || status === 'completed' || status === 'done') {
+                        // Selesai: deduct from stock (if DB trigger hasn't already recorded it)
+                        if (!hasOutMutation) dynamicDeductionsQty += qty
+
+                    } else if (status === 'rts') {
+                        // RTS: check return resolution status
+                        const rStatus = mengantarReturnMap.get(s.tracking_id) || 'diproses'
+
+                        if (rStatus === 'diproses') {
+                            // Still in RTS processing → show in 'RTS Proses' column
+                            rtsProsesQty += qty
+                        } else if (rStatus === 'diterima') {
+                            // Cancel out the explicit 'in' mutation to balance warehouse stock
+                            if (hasInMutation) dynamicDeductionsQty += qty
+                        } else if (rStatus === 'hilang') {
+                            // Lost during return → permanent stock out
+                            if (!hasOutMutation) dynamicDeductionsQty += qty
+                        }
+
+                    } else if (status === 'dibatalkan' || status === 'batal' || status === 'cancelled') {
+                        // Cancelled: ignore, stock never moved
+                        return
+                    } else {
+                        // Any active status (Dikirim, proses, etc.): stock is in transit
+                        dikirimQty += qty
+                    }
+                })
+
 
                 // 3. Current physical inventory in warehouse
                 const stokGudang = totalMutasi - dynamicDeductionsQty - dikirimQty - rtsProsesQty

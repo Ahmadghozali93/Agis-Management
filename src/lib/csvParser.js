@@ -18,11 +18,16 @@ function cleanString(str) {
 function findHeaderRowIndex(rows) {
     for (let r = 0; r < Math.min(rows.length, 10); r++) {
         const row = rows[r] || []
-        const hasOrder = row.some(cell => {
+        const hasIdentifier = row.some(cell => {
             const val = String(cell).toLowerCase()
-            return val.includes('order id') || val.includes('order/adjustment id')
+            return val.includes('order id') || 
+                   val.includes('order/adjustment id') || 
+                   val.includes('tracking id') || 
+                   val.includes('resi') || 
+                   val.includes('stt number') ||
+                   val.includes('waybill')
         })
-        if (hasOrder) return r
+        if (hasIdentifier) return r
     }
     return 0 // Fallback to first row
 }
@@ -121,11 +126,16 @@ export function parseCSV(text) {
 
     for (let r = 0; r < Math.min(lines.length, 10); r++) {
         const res = findDelimiterAndSplit(lines[r])
-        const hasOrder = res.row.some(cell => {
+        const hasIdentifier = res.row.some(cell => {
             const val = String(cell).toLowerCase()
-            return val.includes('order id') || val.includes('order/adjustment id')
+            return val.includes('order id') || 
+                   val.includes('order/adjustment id') ||
+                   val.includes('tracking id') ||
+                   val.includes('resi') ||
+                   val.includes('stt number') ||
+                   val.includes('waybill')
         })
-        if (hasOrder) {
+        if (hasIdentifier) {
             headerIdx = r
             headers = res.row.map(cleanString)
             delimiter = res.delimiter
@@ -376,5 +386,188 @@ export function mapTiktokFailedCodRow(row) {
         tracking_id: getVal(['Tracking ID', 'Resi', 'Waybill']),
         return_reason: getVal(['Return reason', 'Alasan pengembalian', 'Reason']),
         return_time: parseDate(getVal(['Return time', 'Waktu pengembalian', 'Created Date'])),
+    }
+}
+
+/**
+ * Maps Mengantar export rows to the DB model
+ * Actual file headers: Expedition, Order ID, Tracking ID, STT Number, Customer Name, Customer Phone Number,
+ * Customer Address, Province, Subdistrict, City, ZIP Code, Weight, COD, Product Value, Product ID, 
+ * Goods Description, Quantity, Diskon Persentase, Diskon Nominal, Harga Barang Setelah Diskon, COGS, 
+ * Sender Name, Sender Phone Number, Create Date, Last Update, Last Status, Shipping Fee,
+ * Shipping Discount, COD Fee (Inc VAT), Shipping Fee Without Discount,
+ * Estimated Pricing, Origin Code, Destination Code
+ */
+export function mapMengantarRow(row) {
+    const parseNum = (val) => {
+        if (val === undefined || val === null || val === '') return 0
+        if (typeof val === 'number') return val
+        let str = String(val).replace(/[^0-9.,-]/g, '').trim()
+        if (!str) return 0
+        // Handle ID format (1.234,56) vs US format (1,234.56)
+        const dots = (str.match(/\./g) || []).length
+        const commas = (str.match(/,/g) || []).length
+        if (dots > 0 && commas > 0) {
+            if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
+                str = str.replace(/\./g, '').replace(',', '.')
+            } else {
+                str = str.replace(/,/g, '')
+            }
+        } else if (commas > 0 && (commas > 1 || /,\d{3}($|\D)/.test(str))) {
+            str = str.replace(/,/g, '')
+        } else if (dots > 0 && (dots > 1 || /\.\d{3}($|\D)/.test(str))) {
+            str = str.replace(/\./g, '')
+        } else if (commas === 1 && /,\d{2}$/.test(str)) {
+            str = str.replace(',', '.')
+        } else {
+            str = str.replace(/,/g, '')
+        }
+        return parseFloat(str) || 0
+    }
+
+    const parseDate = (val) => {
+        if (!val) return null
+        const parts = String(val).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(.*)/)
+        if (parts) {
+            const day = parseInt(parts[1], 10)
+            const month = parseInt(parts[2], 10) - 1
+            const year = parseInt(parts[3], 10)
+            const safeDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}${parts[4] || ''}`
+            const d = new Date(safeDateStr)
+            if (!isNaN(d.getTime())) return d.toISOString()
+        }
+        const d = new Date(val)
+        if (!isNaN(d.getTime())) return d.toISOString()
+        return null
+    }
+
+    const getVal = (keyNames) => {
+        const lowerRow = {}
+        Object.keys(row).forEach(k => lowerRow[k.toLowerCase().trim()] = row[k])
+        for (const kn of keyNames) {
+            if (row[kn] !== undefined && row[kn] !== null && row[kn] !== '') return String(row[kn])
+            const lower = kn.toLowerCase().trim()
+            if (lowerRow[lower] !== undefined && lowerRow[lower] !== null && lowerRow[lower] !== '') return String(lowerRow[lower])
+        }
+        return ''
+    }
+
+    // Strip leading apostrophe added by Excel when forcing text format (e.g. 'MGT001234 → MGT001234)
+    const cleanId = (val) => (val || '').replace(/^'+/, '').trim()
+
+    return {
+        expedition: getVal(['Expedition', 'expedition', 'Ekspedisi']),
+        order_id: cleanId(getVal(['Order ID', 'order_id'])),
+        tracking_id: cleanId(getVal(['Tracking ID', 'tracking_id', 'Resi', 'AWB'])),
+        stt_number: cleanId(getVal(['STT Number', 'stt_number', 'No STT'])),
+        customer_name: getVal(['Customer Name', 'customer_name', 'Nama Konsumen']),
+        customer_phone: getVal(['Customer Phone Number', 'customer_phone']),
+        customer_address: getVal(['Customer Address', 'customer_address']),
+        province: getVal(['Province', 'province', 'Provinsi']),
+        city: getVal(['City', 'city', 'Kota']),
+        weight: parseNum(getVal(['Weight', 'weight', 'Berat'])),
+        cod: parseNum(getVal(['COD', 'cod'])),
+        product_value: parseNum(getVal(['Product Value', 'product_value'])),
+        product_id: getVal(['Product ID', 'product_id']),
+        goods_description: getVal(['Goods Description', 'goods_description', 'Produk', 'Product Name']),
+        quantity: parseInt(getVal(['Quantity', 'quantity', 'Qty'])) || 0,
+        diskon_persentase: parseNum(getVal(['Diskon Persentase', 'diskon_persentase', 'Diskon %'])),
+        diskon_nominal: parseNum(getVal(['Diskon Nominal', 'diskon_nominal'])),
+        harga_jual: parseNum(getVal(['Harga Barang Setelah Diskon', 'harga_setelah_diskon', 'Harga Jual', 'harga_jual'])), // Backwards compatible fallback to Harga Jual if missing
+        harga_setelah_diskon: parseNum(getVal(['Harga Barang Setelah Diskon', 'harga_setelah_diskon'])),
+        cogs: parseNum(getVal(['COGS', 'cogs', 'HPP'])),
+        sender_name: getVal(['Sender Name', 'sender_name']),
+        create_date: parseDate(getVal(['Create Date', 'create_date', 'Tanggal'])),
+        last_update: parseDate(getVal(['Last Update', 'last_update'])),
+        timestamp: new Date().toISOString(),
+        last_status: 'Dikirim',
+        last_pod_status: getVal(['Last POD Status', 'last_pod_status']),
+        shipping_fee: parseNum(getVal(['Shipping Fee', 'shipping_fee', 'Ongkir'])),
+        shipping_discount: parseNum(getVal(['Shipping Discount', 'shipping_discount'])),
+        cod_fee: parseNum(getVal(['COD Fee (Inc VAT)', 'cod_fee', 'COD Fee'])),
+        shipping_fee_without_discount: parseNum(getVal(['Shipping Fee Without Discount', 'shipping_fee_without_discount'])),
+        estimated_pricing: parseNum(getVal(['Estimated Pricing', 'estimated_pricing'])),
+        origin_code: getVal(['Origin Code', 'origin_code']),
+        destination_code: getVal(['Destination Code', 'destination_code'])
+    }
+}
+
+/**
+ * Maps Mengantar Finance export rows to the DB model
+ * Expected headers: Date, Description, Tracking ID, Courier, Customer Name, 
+ * Customer Phone Number, Goods Description, Quantity, Sender Name, COD Value, 
+ * Discounted Shipping Fee, Estimated Pricing, COD Fee (inc tax), Total
+ */
+export function mapMengantarFinanceRow(row) {
+    const parseNum = (val) => {
+        if (val === undefined || val === null || val === '') return 0
+        if (typeof val === 'number') return val
+        let str = String(val).replace(/[^0-9.,-]/g, '').trim()
+        if (!str) return 0
+        const dots = (str.match(/\./g) || []).length
+        const commas = (str.match(/,/g) || []).length
+        if (dots > 0 && commas > 0) {
+            if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
+                str = str.replace(/\./g, '').replace(',', '.')
+            } else {
+                str = str.replace(/,/g, '')
+            }
+        } else if (commas > 0 && (commas > 1 || /,\d{3}($|\D)/.test(str))) {
+            str = str.replace(/,/g, '')
+        } else if (dots > 0 && (dots > 1 || /\.\d{3}($|\D)/.test(str))) {
+            str = str.replace(/\./g, '')
+        } else if (commas === 1 && /,\d{2}$/.test(str)) {
+            str = str.replace(',', '.')
+        } else {
+            str = str.replace(/,/g, '')
+        }
+        return parseFloat(str) || 0
+    }
+
+    const parseDate = (val) => {
+        if (!val) return null
+        const parts = String(val).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(.*)/)
+        if (parts) {
+            const day = parseInt(parts[1], 10)
+            const month = parseInt(parts[2], 10) - 1
+            const year = parseInt(parts[3], 10)
+            const safeDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}${parts[4] || ''}`
+            const d = new Date(safeDateStr)
+            if (!isNaN(d.getTime())) return d.toISOString()
+        }
+        const d = new Date(val)
+        if (!isNaN(d.getTime())) return d.toISOString()
+        return null
+    }
+
+    const getVal = (keyNames) => {
+        const lowerRow = {}
+        Object.keys(row).forEach(k => lowerRow[k.toLowerCase().trim()] = row[k])
+        for (const kn of keyNames) {
+            if (row[kn] !== undefined && row[kn] !== null && row[kn] !== '') return String(row[kn])
+            const lower = kn.toLowerCase().trim()
+            if (lowerRow[lower] !== undefined && lowerRow[lower] !== null && lowerRow[lower] !== '') return String(lowerRow[lower])
+        }
+        return ''
+    }
+
+    // Strip leading apostrophe added by Excel (e.g. 'MGT001234 → MGT001234)
+    const cleanId = (val) => (val || '').replace(/^'+/, '').trim()
+
+    return {
+        date: parseDate(getVal(['Date', 'date', 'Tanggal'])),
+        description: getVal(['Description', 'description', 'Deskripsi']),
+        tracking_id: cleanId(getVal(['Tracking ID', 'tracking_id', 'Resi'])),
+        courier: getVal(['Courier', 'courier', 'Kurir', 'Ekspedisi']),
+        customer_name: getVal(['Customer Name', 'customer_name', 'Nama Konsumen']),
+        customer_phone: getVal(['Customer Phone Number', 'customer_phone']),
+        goods_description: getVal(['Goods Description', 'goods_description', 'Produk']),
+        quantity: parseInt(getVal(['Quantity', 'quantity', 'Qty'])) || 0,
+        sender_name: getVal(['Sender Name', 'sender_name', 'Pengirim']),
+        cod_value: parseNum(getVal(['COD Value', 'cod_value', 'COD'])),
+        discounted_shipping_fee: parseNum(getVal(['Discounted Shipping Fee', 'discounted_shipping_fee'])),
+        estimated_pricing: parseNum(getVal(['Estimated Pricing', 'estimated_pricing'])),
+        cod_fee: parseNum(getVal(['COD Fee (inc tax)', 'cod_fee', 'COD Fee'])),
+        total: parseNum(getVal(['Total', 'total']))
     }
 }

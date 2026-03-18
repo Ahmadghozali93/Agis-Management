@@ -4,6 +4,9 @@ import { supabase } from '../../lib/supabase'
 export default function NeracaPage() {
     const [loading, setLoading] = useState(true)
     const [period, setPeriod] = useState('all')
+    const [customStart, setCustomStart] = useState('')
+    const [customEnd, setCustomEnd] = useState('')
+    const [selectedMonth, setSelectedMonth] = useState('')
 
     const [allCoas, setAllCoas] = useState([])
     const [asetCoas, setAsetCoas] = useState([])
@@ -20,9 +23,11 @@ export default function NeracaPage() {
     const [transfers, setTransfers] = useState([])
     const [tiktokFinance, setTiktokFinance] = useState([])
     const [tiktokWithdrawals, setTiktokWithdrawals] = useState([])
+    const [mengantarFinance, setMengantarFinance] = useState([])
+    const [mengantarWithdrawals, setMengantarWithdrawals] = useState([])
     const [matchedSalesForTikTok, setMatchedSalesForTikTok] = useState(new Set())
 
-    useEffect(() => { loadData() }, [period])
+    useEffect(() => { loadData() }, [period, customStart, customEnd, selectedMonth])
 
     async function loadData() {
         try {
@@ -46,10 +51,41 @@ export default function NeracaPage() {
             let mutQ = supabase.from('stock_mutations').select('qty, hpp, date').eq('type', 'out')
             let tikFinQ = supabase.from('tiktok_finance').select('order_id, pencairan, settlement_date, harga_jual, platform_fee')
             let tikWithQ = supabase.from('tiktok_withdrawals').select('amount, withdraw_date')
+            let mengFinQ = supabase.from('mengantar_finance').select('total, date')
+            let mengWithQ = supabase.from('mengantar_withdrawals').select('amount, withdraw_date')
             // Don't filter sales by date when matching settlements, as old sales can be settled later
             let salForTikQ = supabase.from('tiktok_sales').select('order_id')
 
-            if (dateFilter) {
+            if (period === 'custom' && customStart && customEnd) {
+                const start = new Date(customStart).toISOString()
+                const end = new Date(customEnd + 'T23:59:59').toISOString()
+                incQ = incQ.gte('date', start).lte('date', end)
+                expQ = expQ.gte('date', start).lte('date', end)
+                salQ = salQ.gte('settlement_date', start).lte('settlement_date', end)
+                purQ = purQ.gte('date', start).lte('date', end)
+                payQ = payQ.gte('date', start).lte('date', end)
+                transQ = transQ.gte('date', start).lte('date', end)
+                mutQ = mutQ.gte('date', start).lte('date', end)
+                tikFinQ = tikFinQ.gte('settlement_date', start).lte('settlement_date', end)
+                tikWithQ = tikWithQ.gte('withdraw_date', start).lte('withdraw_date', end)
+                mengFinQ = mengFinQ.gte('date', start).lte('date', end)
+                mengWithQ = mengWithQ.gte('withdraw_date', start).lte('withdraw_date', end)
+            } else if (period === 'pickmonth' && selectedMonth) {
+                const [year, month] = selectedMonth.split('-').map(Number)
+                const start = new Date(year, month - 1, 1).toISOString()
+                const end = new Date(year, month, 0, 23, 59, 59).toISOString()
+                incQ = incQ.gte('date', start).lte('date', end)
+                expQ = expQ.gte('date', start).lte('date', end)
+                salQ = salQ.gte('settlement_date', start).lte('settlement_date', end)
+                purQ = purQ.gte('date', start).lte('date', end)
+                payQ = payQ.gte('date', start).lte('date', end)
+                transQ = transQ.gte('date', start).lte('date', end)
+                mutQ = mutQ.gte('date', start).lte('date', end)
+                tikFinQ = tikFinQ.gte('settlement_date', start).lte('settlement_date', end)
+                tikWithQ = tikWithQ.gte('withdraw_date', start).lte('withdraw_date', end)
+                mengFinQ = mengFinQ.gte('date', start).lte('date', end)
+                mengWithQ = mengWithQ.gte('withdraw_date', start).lte('withdraw_date', end)
+            } else if (dateFilter) {
                 incQ = incQ.gte('date', dateFilter)
                 expQ = expQ.gte('date', dateFilter)
                 salQ = salQ.gte('settlement_date', dateFilter)
@@ -59,31 +95,37 @@ export default function NeracaPage() {
                 mutQ = mutQ.gte('date', dateFilter)
                 tikFinQ = tikFinQ.gte('settlement_date', dateFilter)
                 tikWithQ = tikWithQ.gte('withdraw_date', dateFilter)
+                mengFinQ = mengFinQ.gte('date', dateFilter)
+                mengWithQ = mengWithQ.gte('withdraw_date', dateFilter)
             }
 
-            const [allCoasRes, incRes, expRes, salRes, purRes, payRes, transRes, mutRes, tikFinRes, tikWithRes, salTikRes] = await Promise.all([
+            const results = await Promise.all([
                 supabase.from('coa').select('id, code, name, type, account_group').order('code'),
-                incQ, expQ, salQ, purQ, payQ, transQ, mutQ, tikFinQ, tikWithQ, salForTikQ
+                incQ, expQ, salQ, purQ, payQ, transQ, mutQ, tikFinQ, tikWithQ, salForTikQ, mengFinQ, mengWithQ
             ])
 
-            const coas = allCoasRes.data || []
+            const [allCoasRes, incRes, expRes, salRes, purRes, payRes, transRes, mutRes, tikFinRes, tikWithRes, salTikRes, mengFinRes, mengWithRes] = results
+
+            const coas = allCoasRes?.data || []
             setAllCoas(coas)
             setAsetCoas(coas.filter(c => ['asset', 'fixed_asset', 'receivable'].includes(c.type)))
             setKewajibanCoas(coas.filter(c => ['liability', 'payable'].includes(c.type)))
             setEkuitasCoas(coas.filter(c => c.type === 'equity'))
 
-            setIncomes(incRes.data || [])
-            setExpenses(expRes.data || [])
-            setSales(salRes.data || [])
-            setPurchases(purRes.data || [])
-            setPayments(payRes.data || [])
-            setTransfers(transRes.data || [])
-            setOutMutations(mutRes.data || [])
-            setTiktokFinance(tikFinRes.data || [])
-            setTiktokWithdrawals(tikWithRes.data || [])
+            setIncomes(incRes?.data || [])
+            setExpenses(expRes?.data || [])
+            setSales(salRes?.data || [])
+            setPurchases(purRes?.data || [])
+            setPayments(payRes?.data || [])
+            setTransfers(transRes?.data || [])
+            setOutMutations(mutRes?.data || [])
+            setTiktokFinance(tikFinRes?.data || [])
+            setTiktokWithdrawals(tikWithRes?.data || [])
+            setMengantarFinance(mengFinRes?.data || [])
+            setMengantarWithdrawals(mengWithRes?.data || [])
 
             // For TikTok matching
-            const matchedSalesIds = new Set((salTikRes.data || []).map(s => s.order_id))
+            const matchedSalesIds = new Set((salTikRes?.data || []).map(s => s.order_id))
             setMatchedSalesForTikTok(matchedSalesIds)
         } catch (err) {
             console.error('Error:', err)
@@ -135,7 +177,7 @@ export default function NeracaPage() {
         // Pembelian menambah aset Persediaan (Inventory), kecuali yang batal
         let persediaanIn = 0
         let persediaanOut = 0
-        if (coa.name.toLowerCase().includes('persediaan')) {
+        if ((coa.name || '').toLowerCase().includes('persediaan')) {
             // Hanya pembelian yang valid ('pending' atau 'lunas') yang masuk persediaan gudang.
             // 'belum_lunas' belum divalidasi jadi belum masuk mutasi stok.
             persediaanIn = purchases.filter(p => p.status === 'pending' || p.status === 'lunas').reduce((s, p) => s + (p.total || 0), 0)
@@ -144,7 +186,7 @@ export default function NeracaPage() {
 
         // TikTokShop COA handling (Case insensitive, handle "Tiktok Shop", "TikTokShop", etc)
         let tiktokBalance = 0
-        const coaNameLower = coa.name.toLowerCase().replace(/\s/g, '')
+        const coaNameLower = (coa.name || '').toLowerCase().replace(/\s/g, '')
         const isTiktokShop = coaNameLower === 'tiktokshop' || coaNameLower.includes('tiktokshop')
 
         if (isTiktokShop) {
@@ -154,7 +196,15 @@ export default function NeracaPage() {
             tiktokBalance = totalSettlement - totalWithdrawn
         }
 
-        return moneyIn - moneyOut - paidOut + transferIn - transferOut + persediaanIn - persediaanOut + tiktokBalance
+        let mengantarBalance = 0
+        const isMengantar = coaNameLower === 'mengantar' || coaNameLower.includes('mengantar')
+        if (isMengantar) {
+            const totalSettlementMengantar = mengantarFinance.reduce((s, f) => s + (Number(f.total) || 0), 0)
+            const totalWithdrawnMengantar = mengantarWithdrawals.reduce((s, w) => s + (Number(w.amount) || 0), 0)
+            mengantarBalance = totalSettlementMengantar - totalWithdrawnMengantar
+        }
+
+        return moneyIn - moneyOut - paidOut + transferIn - transferOut + persediaanIn - persediaanOut + tiktokBalance + mengantarBalance
     }
 
     // Get real type of a category label
@@ -175,7 +225,7 @@ export default function NeracaPage() {
 
         // Pembelian yang belum lunas otomatis masuk ke Utang Usaha
         let utangPembelian = 0
-        if (coa.code === '2000' || coa.name.toLowerCase().includes('utang usaha')) {
+        if (coa.code === '2000' || (coa.name || '').toLowerCase().includes('utang usaha')) {
             // Hanya order yang sudah divalidasi (pending) atau lunas yang masuk ke Utang Usaha.
             // belum_lunas belum diakui sebagai utang/aset.
             const validPurchases = purchases.filter(p => p.status === 'pending' || p.status === 'lunas')
@@ -203,6 +253,9 @@ export default function NeracaPage() {
     const matchedFinanceForCalc = tiktokFinance.filter(f => matchedSalesForTikTok.has(f.order_id))
     const totalSales = matchedFinanceForCalc.reduce((s, x) => s + (Number(x.pencairan) || 0), 0)
 
+    const totalMengantarPencairan = mengantarFinance.reduce((s, x) => s + (Number(x.total) || 0), 0)
+    const totalMengantarSales = totalMengantarPencairan
+
     // For Pemasukan, we count it as income unless it's explicitly liability, equity, or asset
     const totalIncome = incomes.filter(i => {
         if (i.category && i.category.toLowerCase().includes('pencairan')) return false
@@ -216,7 +269,7 @@ export default function NeracaPage() {
         return type === 'income' || type === 'expense' || type === null
     }).reduce((s, e) => s + (e.amount || 0), 0)
 
-    const labaDitahan = totalIncome + totalSales - (totalExpense + totalHpp)
+    const labaDitahan = totalIncome + totalSales + totalMengantarSales - (totalExpense + totalHpp)
 
     const totalAset = asetCoas.reduce((s, c) => s + getAssetBalance(c), 0)
     const totalKewajiban = kewajibanCoas.reduce((s, c) => s + getKewajibanBalance(c), 0)
@@ -233,7 +286,26 @@ export default function NeracaPage() {
                         <button className={`tab ${period === 'month' ? 'active' : ''}`} onClick={() => setPeriod('month')}>Bulan Ini</button>
                         <button className={`tab ${period === 'year' ? 'active' : ''}`} onClick={() => setPeriod('year')}>Tahun Ini</button>
                         <button className={`tab ${period === 'all' ? 'active' : ''}`} onClick={() => setPeriod('all')}>Semua</button>
+                        <button className={`tab ${period === 'pickmonth' ? 'active' : ''}`} onClick={() => setPeriod('pickmonth')}>Pilih Bulan</button>
+                        <button className={`tab ${period === 'custom' ? 'active' : ''}`} onClick={() => setPeriod('custom')}>Kustom</button>
                     </div>
+                    {period === 'pickmonth' && (
+                        <input type="month" value={selectedMonth}
+                            onChange={e => setSelectedMonth(e.target.value)}
+                            style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', marginTop: '8px' }}
+                        />
+                    )}
+                    {period === 'custom' && (
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+                            <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
+                                style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                            />
+                            <span style={{ color: 'var(--text-muted)' }}>s/d</span>
+                            <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
+                                style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
 

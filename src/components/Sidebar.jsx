@@ -31,6 +31,16 @@ const menuItems = [
         ]
     },
     {
+        key: 'mengantar',
+        label: 'Mengantar',
+        icon: '🚚',
+        children: [
+            { key: 'penjualan-mengantar', label: 'Penjualan', path: '/mengantar/penjualan' },
+            { key: 'return-mengantar', label: 'Return', path: '/mengantar/return' },
+            { key: 'keuangan-mengantar', label: 'Keuangan', path: '/mengantar/keuangan' }
+        ]
+    },
+    {
         key: 'konten',
         label: 'Konten',
         icon: '🎬',

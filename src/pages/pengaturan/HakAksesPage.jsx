@@ -16,6 +16,11 @@ const MENUS = [
     { key: 'return', label: 'TikTok Return', group: 'TikTok' },
     { key: 'keuangan-tt', label: 'TikTok Keuangan', group: 'TikTok' },
 
+    { key: 'mengantar', label: 'Mengantar (Parent)', group: 'Mengantar' },
+    { key: 'penjualan-mengantar', label: 'Mengantar Penjualan', group: 'Mengantar' },
+    { key: 'return-mengantar', label: 'Mengantar Return', group: 'Mengantar' },
+    { key: 'keuangan-mengantar', label: 'Mengantar Keuangan', group: 'Mengantar' },
+
     { key: 'konten', label: 'Konten (Parent)', group: 'Konten' },
     { key: 'dashboard-konten', label: 'Dashboard Konten', group: 'Konten' },
     { key: 'data-akun', label: 'Data Akun Konten', group: 'Konten' },

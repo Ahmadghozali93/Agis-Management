@@ -8,11 +8,15 @@ export default function LabaRugiPage() {
     const [outMutations, setOutMutations] = useState([])
     const [allCoas, setAllCoas] = useState([])
     const [tiktokFinance, setTiktokFinance] = useState([])
+    const [mengantarFinance, setMengantarFinance] = useState([])
     const [matchedSalesForTikTok, setMatchedSalesForTikTok] = useState(new Set())
     const [loading, setLoading] = useState(true)
     const [period, setPeriod] = useState('month')
+    const [customStart, setCustomStart] = useState('')
+    const [customEnd, setCustomEnd] = useState('')
+    const [selectedMonth, setSelectedMonth] = useState('')
 
-    useEffect(() => { loadData() }, [period])
+    useEffect(() => { loadData() }, [period, customStart, customEnd, selectedMonth])
 
     async function loadData() {
         try {
@@ -23,8 +27,28 @@ export default function LabaRugiPage() {
             let mutQuery = supabase.from('stock_mutations').select('qty, hpp, date').eq('type', 'out')
             let tikFinQ = supabase.from('tiktok_finance').select('order_id, pencairan, settlement_date')
             let salForTikQ = supabase.from('tiktok_sales').select('order_id')
+            let mengFinQ = supabase.from('mengantar_finance').select('total, date')
 
-            if (period !== 'all') {
+            if (period === 'custom' && customStart && customEnd) {
+                const start = new Date(customStart).toISOString()
+                const end = new Date(customEnd + 'T23:59:59').toISOString()
+                incomeQuery = incomeQuery.gte('date', start).lte('date', end)
+                expenseQuery = expenseQuery.gte('date', start).lte('date', end)
+                salesQuery = salesQuery.gte('settlement_date', start).lte('settlement_date', end)
+                mutQuery = mutQuery.gte('date', start).lte('date', end)
+                tikFinQ = tikFinQ.gte('settlement_date', start).lte('settlement_date', end)
+                mengFinQ = mengFinQ.gte('date', start).lte('date', end)
+            } else if (period === 'pickmonth' && selectedMonth) {
+                const [year, month] = selectedMonth.split('-').map(Number)
+                const start = new Date(year, month - 1, 1).toISOString()
+                const end = new Date(year, month, 0, 23, 59, 59).toISOString()
+                incomeQuery = incomeQuery.gte('date', start).lte('date', end)
+                expenseQuery = expenseQuery.gte('date', start).lte('date', end)
+                salesQuery = salesQuery.gte('settlement_date', start).lte('settlement_date', end)
+                mutQuery = mutQuery.gte('date', start).lte('date', end)
+                tikFinQ = tikFinQ.gte('settlement_date', start).lte('settlement_date', end)
+                mengFinQ = mengFinQ.gte('date', start).lte('date', end)
+            } else if (period !== 'all') {
                 const now = new Date()
                 let startDate
                 if (period === 'month') {
@@ -38,17 +62,19 @@ export default function LabaRugiPage() {
                     salesQuery = salesQuery.gte('settlement_date', startDate)
                     mutQuery = mutQuery.gte('date', startDate)
                     tikFinQ = tikFinQ.gte('settlement_date', startDate)
+                    mengFinQ = mengFinQ.gte('date', startDate)
                 }
             }
 
-            const [{ data: inc }, { data: exp }, { data: sal }, { data: mutRes }, { data: coaData }, { data: tikFinData }, { data: salTikData }] = await Promise.all([
+            const [{ data: inc }, { data: exp }, { data: sal }, { data: mutRes }, { data: coaData }, { data: tikFinData }, { data: salTikData }, { data: mengFinData }] = await Promise.all([
                 incomeQuery,
                 expenseQuery,
                 salesQuery,
                 mutQuery,
                 supabase.from('coa').select('code, name, type'),
                 tikFinQ,
-                salForTikQ
+                salForTikQ,
+                mengFinQ
             ])
 
             setIncomes(inc || [])
@@ -57,6 +83,7 @@ export default function LabaRugiPage() {
             setOutMutations(mutRes || [])
             setAllCoas(coaData || [])
             setTiktokFinance(tikFinData || [])
+            setMengantarFinance(mengFinData || [])
 
             const matchedSalesIds = new Set((salTikData || []).map(s => s.order_id))
             setMatchedSalesForTikTok(matchedSalesIds)
@@ -114,13 +141,17 @@ export default function LabaRugiPage() {
     const matchedFinanceForCalc = tiktokFinance.filter(f => matchedSalesForTikTok.has(f.order_id))
     const totalSales = matchedFinanceForCalc.reduce((s, x) => s + (Number(x.pencairan) || 0), 0)
 
+    // Sales and RTS Costs from Mengantar
+    const totalMengantarPencairan = mengantarFinance.reduce((s, x) => s + (Number(x.total) || 0), 0)
+    const totalMengantarSales = totalMengantarPencairan
+
     // HPP / COGS total
     const totalHpp = outMutations.reduce((s, m) => s + (Number(m.qty || 0) * Number(m.hpp || 0)), 0)
 
     const totalIncome = validIncomes.reduce((s, i) => s + (i.amount || 0), 0)
-    const totalPendapatan = totalIncome + totalSales
+    const totalPendapatan = totalIncome + totalSales + totalMengantarSales
 
-    // Total expense includes explicit expenses AND computed HPP 
+    // Total expense includes explicit expenses AND computed HPP AND Biaya RTS
     const explicitExpenses = validExpenses.reduce((s, e) => s + (e.amount || 0), 0)
     const totalExpense = explicitExpenses + totalHpp
     const profit = totalPendapatan - totalExpense
@@ -134,7 +165,26 @@ export default function LabaRugiPage() {
                         <button className={`tab ${period === 'month' ? 'active' : ''}`} onClick={() => setPeriod('month')}>Bulan Ini</button>
                         <button className={`tab ${period === 'year' ? 'active' : ''}`} onClick={() => setPeriod('year')}>Tahun Ini</button>
                         <button className={`tab ${period === 'all' ? 'active' : ''}`} onClick={() => setPeriod('all')}>Semua</button>
+                        <button className={`tab ${period === 'pickmonth' ? 'active' : ''}`} onClick={() => setPeriod('pickmonth')}>Pilih Bulan</button>
+                        <button className={`tab ${period === 'custom' ? 'active' : ''}`} onClick={() => setPeriod('custom')}>Kustom</button>
                     </div>
+                    {period === 'pickmonth' && (
+                        <input type="month" value={selectedMonth}
+                            onChange={e => setSelectedMonth(e.target.value)}
+                            style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', marginTop: '8px' }}
+                        />
+                    )}
+                    {period === 'custom' && (
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+                            <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
+                                style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                            />
+                            <span style={{ color: 'var(--text-muted)' }}>s/d</span>
+                            <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
+                                style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -175,6 +225,20 @@ export default function LabaRugiPage() {
                                             <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '8px' }}>({matchedFinanceForCalc.length} trx match)</span>
                                         </span>
                                         <span style={{ fontWeight: 600, color: 'var(--success)', whiteSpace: 'nowrap', textAlign: 'right', minWidth: '120px' }}>{fmt(totalSales)}</span>
+                                    </div>
+                                )}
+
+                                {/* Penjualan Mengantar */}
+                                {totalMengantarSales > 0 && (
+                                    <div style={{
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                        padding: '8px 12px', borderRadius: 'var(--radius-sm)', fontSize: '13px'
+                                    }}>
+                                        <span style={{ flex: 1, minWidth: 0 }}>
+                                            <span style={{ fontWeight: 500 }}>Penjualan Mengantar</span>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '8px' }}>({mengantarFinance.length} mutasi)</span>
+                                        </span>
+                                        <span style={{ fontWeight: 600, color: 'var(--success)', whiteSpace: 'nowrap', textAlign: 'right', minWidth: '120px' }}>{fmt(totalMengantarSales)}</span>
                                     </div>
                                 )}
 

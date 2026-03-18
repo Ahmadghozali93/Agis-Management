@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import CrudPage from '../../components/CrudPage'
+import { useAuth } from '../../context/AuthContext'
 
 export default function LaporanLivePage() {
+    const { hasAccess } = useAuth()
+    const canApprove = hasAccess(['admin', 'owner', 'spv'])
     const [accounts, setAccounts] = useState([])
     const [users, setUsers] = useState([])
 
@@ -42,6 +45,7 @@ export default function LaporanLivePage() {
 
     const renderCustomActions = (item, loadData) => {
         if (item.validation_status !== 'pending') return null
+        if (!canApprove) return null
         return (
             <>
                 <button className="btn btn-sm btn-success" onClick={() => handleValidate(item, 'approved', loadData)} title="Approve">✅</button>
@@ -84,6 +88,6 @@ export default function LaporanLivePage() {
                 { name: 'revenue', label: 'Omzet', type: 'number', placeholder: '0' }
             ]}
             customActions={renderCustomActions}
-        />
+            disableActionsWhen={item => item.validation_status === 'approved'}/>
     )
 }
