@@ -48,7 +48,7 @@ export default function NeracaPage() {
             let purQ = supabase.from('purchases').select('total, status, date')
             let payQ = supabase.from('payments').select('amount, method, date')
             let transQ = supabase.from('transfers').select('amount, from_account, to_account, date')
-            let mutQ = supabase.from('stock_mutations').select('qty, hpp, date').eq('type', 'out')
+            let mutQ = supabase.from('stock_mutations').select('qty, hpp, date, product_name, sku').eq('type', 'out')
             let tikFinQ = supabase.from('tiktok_finance').select('order_id, pencairan, settlement_date, harga_jual, platform_fee')
             let tikWithQ = supabase.from('tiktok_withdrawals').select('amount, withdraw_date')
             let mengFinQ = supabase.from('mengantar_finance').select('total, date')
@@ -101,10 +101,12 @@ export default function NeracaPage() {
 
             const results = await Promise.all([
                 supabase.from('coa').select('id, code, name, type, account_group').order('code'),
-                incQ, expQ, salQ, purQ, payQ, transQ, mutQ, tikFinQ, tikWithQ, salForTikQ, mengFinQ, mengWithQ
+                incQ, expQ, salQ, purQ, payQ, transQ, mutQ, tikFinQ, tikWithQ, salForTikQ, mengFinQ, mengWithQ,
+                supabase.from('products').select('id, name, sku, hpp'),
+                supabase.from('purchases').select('items, status').neq('status', 'batal')
             ])
 
-            const [allCoasRes, incRes, expRes, salRes, purRes, payRes, transRes, mutRes, tikFinRes, tikWithRes, salTikRes, mengFinRes, mengWithRes] = results
+            const [allCoasRes, incRes, expRes, salRes, purRes, payRes, transRes, mutRes, tikFinRes, tikWithRes, salTikRes, mengFinRes, mengWithRes, prodRes, purAllRes] = results
 
             const coas = allCoasRes?.data || []
             setAllCoas(coas)
@@ -118,7 +120,41 @@ export default function NeracaPage() {
             setPurchases(purRes?.data || [])
             setPayments(payRes?.data || [])
             setTransfers(transRes?.data || [])
-            setOutMutations(mutRes?.data || [])
+            // Dynamic Average HPP logic
+            let allPurchasedItems = []
+            if (purAllRes?.data) {
+                purAllRes.data.forEach(p => {
+                    let pItems = p.items
+                    if (typeof pItems === 'string') {
+                        try { pItems = JSON.parse(pItems) } catch (e) { pItems = [] }
+                    }
+                    if (Array.isArray(pItems)) {
+                        allPurchasedItems.push(...pItems)
+                    }
+                })
+            }
+
+            const computedProducts = (prodRes?.data || []).map(p => {
+                const baseHpp = Number(p.hpp) || 0
+                const pItems = allPurchasedItems.filter(it => it.product_id === p.id || (it.sku && p.sku && it.sku === p.sku) || it.name === p.name)
+                let totalCost = 0
+                let totalQty = 0
+                pItems.forEach(it => {
+                    const q = Number(it.qty) || 0
+                    const price = Number(it.price) || 0
+                    totalCost += (q * price)
+                    totalQty += q
+                })
+                const purchaseHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : 0
+                const avgHpp = purchaseHpp > 0 ? purchaseHpp : baseHpp
+                return { ...p, avg_hpp: avgHpp }
+            })
+
+            const outMutationsData = (mutRes?.data || []).map(m => {
+                const prod = computedProducts.find(p => (m.sku && p.sku === m.sku) || p.name === m.product_name)
+                return { ...m, computed_hpp: prod ? prod.avg_hpp : (m.hpp || 0) }
+            })
+            setOutMutations(outMutationsData)
             setTiktokFinance(tikFinRes?.data || [])
             setTiktokWithdrawals(tikWithRes?.data || [])
             setMengantarFinance(mengFinRes?.data || [])
@@ -136,7 +172,7 @@ export default function NeracaPage() {
 
     function fmt(v) { return 'Rp ' + (v || 0).toLocaleString('id-ID') }
 
-    const totalHpp = outMutations.reduce((s, m) => s + (Number(m.qty || 0) * Number(m.hpp || 0)), 0)
+    const totalHpp = outMutations.reduce((s, m) => s + (Number(m.qty || 0) * Number(m.computed_hpp !== undefined ? m.computed_hpp : m.hpp || 0)), 0)
 
     // Calculate asset balances from transactions
     function getAssetBalance(coa) {

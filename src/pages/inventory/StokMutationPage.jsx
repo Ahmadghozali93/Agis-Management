@@ -43,12 +43,54 @@ export default function StokMutationPage() {
 
     async function loadData() {
         setLoading(true)
-        const [mutRes, prodRes] = await Promise.all([
+        const [mutRes, prodRes, purRes] = await Promise.all([
             supabase.from('stock_mutations').select('*').order('created_at', { ascending: false }),
-            supabase.from('products').select('name, sku, hpp').order('name')
+            supabase.from('products').select('*').order('name'),
+            supabase.from('purchases').select('items, status').neq('status', 'batal')
         ])
-        if (mutRes.data) setMutations(mutRes.data)
-        if (prodRes.data) setProducts(prodRes.data)
+
+        let allPurchasedItems = []
+        if (purRes?.data) {
+            purRes.data.forEach(p => {
+                let pItems = p.items
+                if (typeof pItems === 'string') {
+                    try { pItems = JSON.parse(pItems) } catch (e) { pItems = [] }
+                }
+                if (Array.isArray(pItems)) {
+                    allPurchasedItems.push(...pItems)
+                }
+            })
+        }
+
+        const computedProducts = (prodRes?.data || []).map(p => {
+            const baseHpp = Number(p.hpp) || 0
+            const pItems = allPurchasedItems.filter(it => it.product_id === p.id || (it.sku && p.sku && it.sku === p.sku) || it.name === p.name)
+            let totalCost = 0
+            let totalQty = 0
+            pItems.forEach(it => {
+                const q = Number(it.qty) || 0
+                const price = Number(it.price) || 0
+                totalCost += (q * price)
+                totalQty += q
+            })
+            const purchaseHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : 0
+            const avgHpp = purchaseHpp > 0 ? purchaseHpp : baseHpp
+
+            return { ...p, avg_hpp: avgHpp }
+        })
+
+        if (mutRes?.data) {
+            const mappedMutations = mutRes.data.map(m => {
+                const prod = computedProducts.find(p => (m.sku && p.sku === m.sku) || p.name === m.product_name)
+                // Mutasi Masuk (termasuk dari Pembelian) harus menampilkan Harga Satuan asli (m.hpp).
+                // Mutasi Keluar (penjualan/retur) menggunakan HPP Rata-rata dinamis.
+                const isMasuk = m.type === 'in'
+                const displayHpp = isMasuk ? m.hpp : (prod ? prod.avg_hpp : m.hpp)
+                return { ...m, display_hpp: displayHpp }
+            })
+            setMutations(mappedMutations)
+        }
+        setProducts(computedProducts)
         setLoading(false)
     }
 
@@ -281,7 +323,7 @@ export default function StokMutationPage() {
                                                     {m.type === 'in' ? '+' : '-'}{m.qty}
                                                 </td>
                                                 <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-primary)' }}>
-                                                    {m.hpp !== null && m.hpp !== undefined ? fmtCurrency(m.hpp) : '-'}
+                                                    {m.display_hpp !== null && m.display_hpp !== undefined ? fmtCurrency(m.display_hpp) : '-'}
                                                 </td>
                                                 <td style={{ padding: '16px' }}>{m.note || '-'}</td>
                                             </tr>

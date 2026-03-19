@@ -199,7 +199,7 @@ export default function StokOverviewPage() {
                     totalQty += q
                 })
                 const purchaseHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : 0
-                const avgHpp = purchaseHpp > 0 ? Math.round((baseHpp + purchaseHpp) / 2) : baseHpp
+                const avgHpp = purchaseHpp > 0 ? purchaseHpp : baseHpp
 
                 const stockValue = endingStock * avgHpp
 

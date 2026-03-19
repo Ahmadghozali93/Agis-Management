@@ -18,7 +18,7 @@ export async function getAverageHpp(sku, name) {
         if (prodData) baseHpp = Number(prodData.hpp) || 0
 
         // 2. Get purchase history to calculate average
-        const { data: purchases, error } = await supabase.from('purchases').select('items').in('status', ['lunas', 'pending'])
+        const { data: purchases, error } = await supabase.from('purchases').select('items').neq('status', 'batal')
         if (error) throw error
 
         let totalCost = 0
@@ -46,7 +46,7 @@ export async function getAverageHpp(sku, name) {
         }
 
         const purchaseHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : 0
-        const avgHpp = purchaseHpp > 0 ? Math.round((baseHpp + purchaseHpp) / 2) : baseHpp
+        const avgHpp = purchaseHpp > 0 ? purchaseHpp : baseHpp
 
         return avgHpp
     } catch (err) {

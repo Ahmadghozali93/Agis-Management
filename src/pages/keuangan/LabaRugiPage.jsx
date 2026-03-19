@@ -24,7 +24,7 @@ export default function LabaRugiPage() {
             let incomeQuery = supabase.from('incomes').select('id, category, amount, date').order('date', { ascending: false })
             let expenseQuery = supabase.from('expenses').select('id, category, amount, date').order('date', { ascending: false })
             let salesQuery = supabase.from('tiktok_sales').select('id, total, settlement_date')
-            let mutQuery = supabase.from('stock_mutations').select('qty, hpp, date').eq('type', 'out')
+            let mutQuery = supabase.from('stock_mutations').select('qty, hpp, date, product_name, sku').eq('type', 'out')
             let tikFinQ = supabase.from('tiktok_finance').select('order_id, pencairan, settlement_date')
             let salForTikQ = supabase.from('tiktok_sales').select('order_id')
             let mengFinQ = supabase.from('mengantar_finance').select('total, date')
@@ -66,7 +66,7 @@ export default function LabaRugiPage() {
                 }
             }
 
-            const [{ data: inc }, { data: exp }, { data: sal }, { data: mutRes }, { data: coaData }, { data: tikFinData }, { data: salTikData }, { data: mengFinData }] = await Promise.all([
+            const [{ data: inc }, { data: exp }, { data: sal }, { data: mutRes }, { data: coaData }, { data: tikFinData }, { data: salTikData }, { data: mengFinData }, { data: prodData }, { data: purAllData }] = await Promise.all([
                 incomeQuery,
                 expenseQuery,
                 salesQuery,
@@ -74,13 +74,48 @@ export default function LabaRugiPage() {
                 supabase.from('coa').select('code, name, type'),
                 tikFinQ,
                 salForTikQ,
-                mengFinQ
+                mengFinQ,
+                supabase.from('products').select('id, name, sku, hpp'),
+                supabase.from('purchases').select('items, status').neq('status', 'batal')
             ])
 
             setIncomes(inc || [])
             setExpenses(exp || [])
             setSales(sal || [])
-            setOutMutations(mutRes || [])
+            let allPurchasedItems = []
+            if (purAllData) {
+                purAllData.forEach(p => {
+                    let pItems = p.items
+                    if (typeof pItems === 'string') {
+                        try { pItems = JSON.parse(pItems) } catch (e) { pItems = [] }
+                    }
+                    if (Array.isArray(pItems)) {
+                        allPurchasedItems.push(...pItems)
+                    }
+                })
+            }
+
+            const computedProducts = (prodData || []).map(p => {
+                const baseHpp = Number(p.hpp) || 0
+                const pItems = allPurchasedItems.filter(it => it.product_id === p.id || (it.sku && p.sku && it.sku === p.sku) || it.name === p.name)
+                let totalCost = 0
+                let totalQty = 0
+                pItems.forEach(it => {
+                    const q = Number(it.qty) || 0
+                    const price = Number(it.price) || 0
+                    totalCost += (q * price)
+                    totalQty += q
+                })
+                const purchaseHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : 0
+                const avgHpp = purchaseHpp > 0 ? purchaseHpp : baseHpp
+                return { ...p, avg_hpp: avgHpp }
+            })
+
+            const outMutationsData = (mutRes || []).map(m => {
+                const prod = computedProducts.find(p => (m.sku && p.sku === m.sku) || p.name === m.product_name)
+                return { ...m, computed_hpp: prod ? prod.avg_hpp : (m.hpp || 0) }
+            })
+            setOutMutations(outMutationsData)
             setAllCoas(coaData || [])
             setTiktokFinance(tikFinData || [])
             setMengantarFinance(mengFinData || [])
@@ -146,7 +181,7 @@ export default function LabaRugiPage() {
     const totalMengantarSales = totalMengantarPencairan
 
     // HPP / COGS total
-    const totalHpp = outMutations.reduce((s, m) => s + (Number(m.qty || 0) * Number(m.hpp || 0)), 0)
+    const totalHpp = outMutations.reduce((s, m) => s + (Number(m.qty || 0) * Number(m.computed_hpp !== undefined ? m.computed_hpp : m.hpp || 0)), 0)
 
     const totalIncome = validIncomes.reduce((s, i) => s + (i.amount || 0), 0)
     const totalPendapatan = totalIncome + totalSales + totalMengantarSales
