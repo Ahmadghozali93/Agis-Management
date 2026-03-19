@@ -49,6 +49,7 @@ export default function NeracaPage() {
             let payQ = supabase.from('payments').select('amount, method, date')
             let transQ = supabase.from('transfers').select('amount, from_account, to_account, date')
             let mutQ = supabase.from('stock_mutations').select('qty, hpp, date, product_name, sku').eq('type', 'out')
+            let inMutQ = supabase.from('stock_mutations').select('qty, hpp, product_name, sku, note').eq('type', 'in')
             let tikFinQ = supabase.from('tiktok_finance').select('order_id, pencairan, settlement_date, harga_jual, platform_fee')
             let tikWithQ = supabase.from('tiktok_withdrawals').select('amount, withdraw_date')
             let mengFinQ = supabase.from('mengantar_finance').select('total, date')
@@ -103,10 +104,10 @@ export default function NeracaPage() {
                 supabase.from('coa').select('id, code, name, type, account_group').order('code'),
                 incQ, expQ, salQ, purQ, payQ, transQ, mutQ, tikFinQ, tikWithQ, salForTikQ, mengFinQ, mengWithQ,
                 supabase.from('products').select('id, name, sku, hpp'),
-                supabase.from('purchases').select('items, status').in('status', ['lunas', 'pending'])
+                inMutQ
             ])
 
-            const [allCoasRes, incRes, expRes, salRes, purRes, payRes, transRes, mutRes, tikFinRes, tikWithRes, salTikRes, mengFinRes, mengWithRes, prodRes, purAllRes] = results
+            const [allCoasRes, incRes, expRes, salRes, purRes, payRes, transRes, mutRes, tikFinRes, tikWithRes, salTikRes, mengFinRes, mengWithRes, prodRes, inMutRes] = results
 
             const coas = allCoasRes?.data || []
             setAllCoas(coas)
@@ -120,33 +121,26 @@ export default function NeracaPage() {
             setPurchases(purRes?.data || [])
             setPayments(payRes?.data || [])
             setTransfers(transRes?.data || [])
-            // Dynamic Average HPP logic
-            let allPurchasedItems = []
-            if (purAllRes?.data) {
-                purAllRes.data.forEach(p => {
-                    let pItems = p.items
-                    if (typeof pItems === 'string') {
-                        try { pItems = JSON.parse(pItems) } catch (e) { pItems = [] }
-                    }
-                    if (Array.isArray(pItems)) {
-                        allPurchasedItems.push(...pItems)
-                    }
-                })
-            }
+            // Removed dynamic average HPP from purchases
 
             const computedProducts = (prodRes?.data || []).map(p => {
                 const baseHpp = Number(p.hpp) || 0
-                const pItems = allPurchasedItems.filter(it => it.product_id === p.id || (it.sku && p.sku && it.sku === p.sku) || it.name === p.name)
+                const inMutations = (inMutRes?.data || []).filter(m => {
+                    if (!((m.sku && p.sku && m.sku === p.sku) || m.product_name === p.name)) return false
+                    const n = (m.note || '').toLowerCase()
+                    if (n.includes('retur') || n.includes('rts') || n.includes('failed')) return false
+                    return true
+                })
                 let totalCost = 0
                 let totalQty = 0
-                pItems.forEach(it => {
-                    const q = Number(it.qty) || 0
-                    const price = Number(it.price) || 0
-                    totalCost += (q * price)
+                inMutations.forEach(m => {
+                    const q = Number(m.qty) || 0
+                    const h = Number(m.hpp) || 0
+                    totalCost += (q * h)
                     totalQty += q
                 })
-                const purchaseHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : 0
-                const avgHpp = purchaseHpp > 0 ? purchaseHpp : baseHpp
+                const mutasiHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : 0
+                const avgHpp = mutasiHpp > 0 ? mutasiHpp : baseHpp
                 return { ...p, avg_hpp: avgHpp }
             })
 

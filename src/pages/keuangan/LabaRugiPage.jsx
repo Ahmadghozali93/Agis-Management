@@ -25,6 +25,7 @@ export default function LabaRugiPage() {
             let expenseQuery = supabase.from('expenses').select('id, category, amount, date').order('date', { ascending: false })
             let salesQuery = supabase.from('tiktok_sales').select('id, total, settlement_date')
             let mutQuery = supabase.from('stock_mutations').select('qty, hpp, date, product_name, sku').eq('type', 'out')
+            let inMutQuery = supabase.from('stock_mutations').select('qty, hpp, product_name, sku, note').eq('type', 'in')
             let tikFinQ = supabase.from('tiktok_finance').select('order_id, pencairan, settlement_date')
             let salForTikQ = supabase.from('tiktok_sales').select('order_id')
             let mengFinQ = supabase.from('mengantar_finance').select('total, date')
@@ -66,7 +67,7 @@ export default function LabaRugiPage() {
                 }
             }
 
-            const [{ data: inc }, { data: exp }, { data: sal }, { data: mutRes }, { data: coaData }, { data: tikFinData }, { data: salTikData }, { data: mengFinData }, { data: prodData }, { data: purAllData }] = await Promise.all([
+            const [{ data: inc }, { data: exp }, { data: sal }, { data: mutRes }, { data: coaData }, { data: tikFinData }, { data: salTikData }, { data: mengFinData }, { data: prodData }, { data: inMutData }] = await Promise.all([
                 incomeQuery,
                 expenseQuery,
                 salesQuery,
@@ -76,38 +77,32 @@ export default function LabaRugiPage() {
                 salForTikQ,
                 mengFinQ,
                 supabase.from('products').select('id, name, sku, hpp'),
-                supabase.from('purchases').select('items, status').in('status', ['lunas', 'pending'])
+                inMutQuery
             ])
 
             setIncomes(inc || [])
             setExpenses(exp || [])
             setSales(sal || [])
-            let allPurchasedItems = []
-            if (purAllData) {
-                purAllData.forEach(p => {
-                    let pItems = p.items
-                    if (typeof pItems === 'string') {
-                        try { pItems = JSON.parse(pItems) } catch (e) { pItems = [] }
-                    }
-                    if (Array.isArray(pItems)) {
-                        allPurchasedItems.push(...pItems)
-                    }
-                })
-            }
+            // Removed old purchase items processing logic
 
             const computedProducts = (prodData || []).map(p => {
                 const baseHpp = Number(p.hpp) || 0
-                const pItems = allPurchasedItems.filter(it => it.product_id === p.id || (it.sku && p.sku && it.sku === p.sku) || it.name === p.name)
+                const inMutations = (inMutData || []).filter(m => {
+                    if (!((m.sku && p.sku && m.sku === p.sku) || m.product_name === p.name)) return false
+                    const n = (m.note || '').toLowerCase()
+                    if (n.includes('retur') || n.includes('rts') || n.includes('failed')) return false
+                    return true
+                })
                 let totalCost = 0
                 let totalQty = 0
-                pItems.forEach(it => {
-                    const q = Number(it.qty) || 0
-                    const price = Number(it.price) || 0
-                    totalCost += (q * price)
+                inMutations.forEach(m => {
+                    const q = Number(m.qty) || 0
+                    const h = Number(m.hpp) || 0
+                    totalCost += (q * h)
                     totalQty += q
                 })
-                const purchaseHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : 0
-                const avgHpp = purchaseHpp > 0 ? purchaseHpp : baseHpp
+                const mutasiHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : 0
+                const avgHpp = mutasiHpp > 0 ? mutasiHpp : baseHpp
                 return { ...p, avg_hpp: avgHpp }
             })
 

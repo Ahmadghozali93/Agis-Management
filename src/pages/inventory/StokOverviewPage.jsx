@@ -14,10 +14,9 @@ export default function StokOverviewPage() {
 
     async function loadProducts() {
         try {
-            const [prodRes, mutRes, purRes, fcRes, retRes, salesRes, mengantarRes, mengantarRetRes] = await Promise.all([
+            const [prodRes, mutRes, fcRes, retRes, salesRes, mengantarRes, mengantarRetRes] = await Promise.all([
                 supabase.from('products').select('*').order('name'),
-                supabase.from('stock_mutations').select('product_name, sku, type, qty, reference_id, note'),
-                supabase.from('purchases').select('items, status').in('status', ['lunas', 'pending']),
+                supabase.from('stock_mutations').select('product_name, sku, type, qty, hpp, reference_id, note'),
                 supabase.from('tiktok_failed_cod').select('order_id, return_status'),
                 supabase.from('tiktok_returns').select('order_id, status'),
                 supabase.from('tiktok_sales').select('order_id, order_status, product_name, seller_sku, quantity'),
@@ -37,16 +36,7 @@ export default function StokOverviewPage() {
 
 
             // Extract all purchased items for HPP calculation
-            const allPurchasedItems = []
-                ; (purRes.data || []).forEach(p => {
-                    let pItems = p.items
-                    if (typeof pItems === 'string') {
-                        try { pItems = JSON.parse(pItems) } catch (e) { pItems = [] }
-                    }
-                    if (Array.isArray(pItems)) {
-                        allPurchasedItems.push(...pItems)
-                    }
-                })
+            // Removed: Average HPP is now calculated from stock_mutations (type: 'in')
 
             const fcMap = new Map()
                 ; (fcRes?.data || []).forEach(f => fcMap.set(f.order_id, (f.return_status || '').toLowerCase()))
@@ -187,19 +177,24 @@ export default function StokOverviewPage() {
                 // 4. Total overall inventory we own (Warehouse + Transit + Back to us)
                 const endingStock = stokGudang + dikirimQty + rtsProsesQty
 
-                // 5. Calculate HPP: (HPP produk + HPP rata2 pembelian) / 2
+                // 5. Calculate HPP
                 const baseHpp = Number(p.hpp) || 0
-                const pItems = allPurchasedItems.filter(it => it.product_id === p.id || (it.sku && p.sku && it.sku === p.sku) || it.name === p.name)
+                const inMutations = prodMutations.filter(m => {
+                    if (m.type !== 'in') return false
+                    const n = (m.note || '').toLowerCase()
+                    if (n.includes('retur') || n.includes('rts') || n.includes('failed')) return false
+                    return true
+                })
                 let totalCost = 0
                 let totalQty = 0
-                pItems.forEach(it => {
-                    const q = Number(it.qty) || 0
-                    const price = Number(it.price) || 0
-                    totalCost += (q * price)
+                inMutations.forEach(m => {
+                    const q = Number(m.qty) || 0
+                    const h = Number(m.hpp) || 0
+                    totalCost += (q * h)
                     totalQty += q
                 })
-                const purchaseHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : 0
-                const avgHpp = purchaseHpp > 0 ? purchaseHpp : baseHpp
+                const mutasiHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : 0
+                const avgHpp = mutasiHpp > 0 ? mutasiHpp : baseHpp
 
                 const stockValue = endingStock * avgHpp
 

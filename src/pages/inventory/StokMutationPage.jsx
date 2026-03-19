@@ -43,38 +43,33 @@ export default function StokMutationPage() {
 
     async function loadData() {
         setLoading(true)
-        const [mutRes, prodRes, purRes] = await Promise.all([
+        const [mutRes, prodRes] = await Promise.all([
             supabase.from('stock_mutations').select('*').order('created_at', { ascending: false }),
-            supabase.from('products').select('*').order('name'),
-            supabase.from('purchases').select('items, status').in('status', ['lunas', 'pending'])
+            supabase.from('products').select('*').order('name')
         ])
 
-        let allPurchasedItems = []
-        if (purRes?.data) {
-            purRes.data.forEach(p => {
-                let pItems = p.items
-                if (typeof pItems === 'string') {
-                    try { pItems = JSON.parse(pItems) } catch (e) { pItems = [] }
-                }
-                if (Array.isArray(pItems)) {
-                    allPurchasedItems.push(...pItems)
-                }
-            })
-        }
+        // Removed: Average HPP is now calculated from stock_mutations (type: 'in')
 
+        const allMutations = mutRes?.data || []
         const computedProducts = (prodRes?.data || []).map(p => {
             const baseHpp = Number(p.hpp) || 0
-            const pItems = allPurchasedItems.filter(it => it.product_id === p.id || (it.sku && p.sku && it.sku === p.sku) || it.name === p.name)
+            const inMutations = allMutations.filter(m => {
+                if (m.type !== 'in') return false
+                if (!(m.sku ? m.sku === p.sku : m.product_name === p.name)) return false
+                const n = (m.note || '').toLowerCase()
+                if (n.includes('retur') || n.includes('rts') || n.includes('failed')) return false
+                return true
+            })
             let totalCost = 0
             let totalQty = 0
-            pItems.forEach(it => {
-                const q = Number(it.qty) || 0
-                const price = Number(it.price) || 0
-                totalCost += (q * price)
+            inMutations.forEach(m => {
+                const q = Number(m.qty) || 0
+                const h = Number(m.hpp) || 0
+                totalCost += (q * h)
                 totalQty += q
             })
-            const purchaseHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : 0
-            const avgHpp = purchaseHpp > 0 ? purchaseHpp : baseHpp
+            const mutasiHpp = totalQty > 0 ? Math.round(totalCost / totalQty) : 0
+            const avgHpp = mutasiHpp > 0 ? mutasiHpp : baseHpp
 
             return { ...p, avg_hpp: avgHpp }
         })

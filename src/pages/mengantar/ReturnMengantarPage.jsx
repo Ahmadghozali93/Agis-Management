@@ -585,7 +585,7 @@ export default function ReturnMengantarPage() {
                                         </td>
                                         <td>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                {lockedBiaya[item.id] ? (
+                                                {item.biaya_rts > 0 || lockedBiaya[item.id] ? (
                                                     <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
                                                         {fmt(item.biaya_rts)}
                                                     </span>
