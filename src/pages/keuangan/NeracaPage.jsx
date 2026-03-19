@@ -103,7 +103,7 @@ export default function NeracaPage() {
                 supabase.from('coa').select('id, code, name, type, account_group').order('code'),
                 incQ, expQ, salQ, purQ, payQ, transQ, mutQ, tikFinQ, tikWithQ, salForTikQ, mengFinQ, mengWithQ,
                 supabase.from('products').select('id, name, sku, hpp'),
-                supabase.from('purchases').select('items, status').neq('status', 'batal')
+                supabase.from('purchases').select('items, status').in('status', ['lunas', 'pending'])
             ])
 
             const [allCoasRes, incRes, expRes, salRes, purRes, payRes, transRes, mutRes, tikFinRes, tikWithRes, salTikRes, mengFinRes, mengWithRes, prodRes, purAllRes] = results

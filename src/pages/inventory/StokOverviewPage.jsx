@@ -17,7 +17,7 @@ export default function StokOverviewPage() {
             const [prodRes, mutRes, purRes, fcRes, retRes, salesRes, mengantarRes, mengantarRetRes] = await Promise.all([
                 supabase.from('products').select('*').order('name'),
                 supabase.from('stock_mutations').select('product_name, sku, type, qty, reference_id, note'),
-                supabase.from('purchases').select('items, status').neq('status', 'batal'),
+                supabase.from('purchases').select('items, status').in('status', ['lunas', 'pending']),
                 supabase.from('tiktok_failed_cod').select('order_id, return_status'),
                 supabase.from('tiktok_returns').select('order_id, status'),
                 supabase.from('tiktok_sales').select('order_id, order_status, product_name, seller_sku, quantity'),

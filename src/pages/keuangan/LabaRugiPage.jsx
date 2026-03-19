@@ -76,7 +76,7 @@ export default function LabaRugiPage() {
                 salForTikQ,
                 mengFinQ,
                 supabase.from('products').select('id, name, sku, hpp'),
-                supabase.from('purchases').select('items, status').neq('status', 'batal')
+                supabase.from('purchases').select('items, status').in('status', ['lunas', 'pending'])
             ])
 
             setIncomes(inc || [])

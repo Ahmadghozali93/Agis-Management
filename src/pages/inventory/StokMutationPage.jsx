@@ -46,7 +46,7 @@ export default function StokMutationPage() {
         const [mutRes, prodRes, purRes] = await Promise.all([
             supabase.from('stock_mutations').select('*').order('created_at', { ascending: false }),
             supabase.from('products').select('*').order('name'),
-            supabase.from('purchases').select('items, status').neq('status', 'batal')
+            supabase.from('purchases').select('items, status').in('status', ['lunas', 'pending'])
         ])
 
         let allPurchasedItems = []
